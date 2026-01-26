@@ -1,0 +1,41 @@
+{
+  "basic_rag": {
+    "total_queries": 3,
+    "success_count": 3,
+    "avg_quality": 0.18772000000000003,
+    "avg_cost": 0.0006230000000000001,
+    "avg_time": 0.4132000000000001,
+    "complexity_performance": {
+      "medium": 0.6396999999999999
+    },
+    "category_performance": {
+      "analytical": 0.6396999999999999
+    }
+  },
+  "hyde_rag": {
+    "total_queries": 2,
+    "success_count": 2,
+    "avg_quality": 0.134,
+    "avg_cost": 0.00039000000000000005,
+    "avg_time": 0.33000000000000007,
+    "complexity_performance": {
+      "medium": 0.62
+    },
+    "category_performance": {
+      "analytical": 0.62
+    }
+  },
+  "self_rag": {
+    "total_queries": 1,
+    "success_count": 1,
+    "avg_quality": 0.06899999999999999,
+    "avg_cost": 0.0009999999999999998,
+    "avg_time": 0.29,
+    "complexity_performance": {
+      "medium": 0.69
+    },
+    "category_performance": {
+      "analytical": 0.69
+    }
+  }
+}
