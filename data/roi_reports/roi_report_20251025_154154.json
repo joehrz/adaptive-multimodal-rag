@@ -1,0 +1,27 @@
+{
+  "period_start": "2025-10-18T15:41:54.044011",
+  "period_end": "2025-10-25T15:41:54.044252",
+  "total_cost": 0.0003708406575520833,
+  "cost_per_query": 0.0001236135525173611,
+  "cost_per_successful_query": 0.0001236135525173611,
+  "total_queries": 3,
+  "successful_queries": 3,
+  "success_rate": 1.0,
+  "avg_quality_score": 0.85,
+  "avg_processing_time": 2.5,
+  "estimated_value_generated": 149.8954624926758,
+  "roi_percentage": 20224119.656607907,
+  "cost_savings_vs_manual": 74.99962915934245,
+  "productivity_improvement": 99.8611111111111,
+  "time_saved_hours": 1.4979166666666666,
+  "strategy_performance": {
+    "basic_rag": {
+      "total_queries": 3,
+      "avg_cost": 0.0001236135525173611,
+      "avg_quality": 0.85,
+      "avg_time": 2.5,
+      "success_rate": 1.0,
+      "cost_efficiency": 6876.268683246688
+    }
+  }
+}

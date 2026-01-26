@@ -1,0 +1,35 @@
+{
+  "period_start": "2025-10-24T15:44:39.805296",
+  "period_end": "2025-10-25T15:44:39.805498",
+  "total_cost": 0.0007455677625868056,
+  "cost_per_query": 0.0001491135525173611,
+  "cost_per_successful_query": 0.0001491135525173611,
+  "total_queries": 5,
+  "successful_queries": 5,
+  "success_rate": 1.0,
+  "avg_quality_score": 0.84,
+  "avg_processing_time": 3.04,
+  "estimated_value_generated": 249.78814332112628,
+  "roi_percentage": 16765546.357688902,
+  "cost_savings_vs_manual": 124.99925443223741,
+  "productivity_improvement": 99.8311111111111,
+  "time_saved_hours": 2.4957777777777777,
+  "strategy_performance": {
+    "basic_rag": {
+      "total_queries": 4,
+      "avg_cost": 0.0001236135525173611,
+      "avg_quality": 0.8375,
+      "avg_time": 2.5,
+      "success_rate": 1.0,
+      "cost_efficiency": 6775.147084963648
+    },
+    "hyde_rag": {
+      "total_queries": 1,
+      "avg_cost": 0.00025111355251736115,
+      "avg_quality": 0.85,
+      "avg_time": 5.2,
+      "success_rate": 1.0,
+      "cost_efficiency": 3384.9228425902415
+    }
+  }
+}
