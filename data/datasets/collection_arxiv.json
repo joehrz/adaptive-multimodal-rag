@@ -1,0 +1,424 @@
+{
+  "documents": [
+    {
+      "content": "Title: R^2AG: Incorporating Retrieval Information into Retrieval Augmented Generation\n\nAbstract:\nRetrieval augmented generation (RAG) has been applied in many scenarios to\naugment large language models (LLMs) with external documents provided by\nretrievers. However, a semantic gap exists between LLMs and retrievers due to\ndifferences in their training objectives and architectures. This misalignment\nforces LLMs to passively accept the documents provided by the retrievers,\nleading to incomprehension in the generation process, where the LLMs are\nburdened with the task of distinguishing these documents using their inherent\nknowledge. This paper proposes R$^2$AG, a novel enhanced RAG framework to fill\nthis gap by incorporating Retrieval information into Retrieval Augmented\nGeneration. Specifically, R$^2$AG utilizes the nuanced features from the\nretrievers and employs a R$^2$-Former to capture retrieval information. Then, a\nretrieval-aware prompting strategy is designed to integrate retrieval\ninformation into LLMs' generation. Notably, R$^2$AG suits low-source scenarios\nwhere LLMs and retrievers are frozen. Extensive experiments across five\ndatasets validate the effectiveness, robustness, and efficiency of R$^2$AG. Our\nanalysis reveals that retrieval information serves as an anchor to aid LLMs in\nthe generation process, thereby filling the semantic gap.",
+      "title": "R^2AG: Incorporating Retrieval Information into Retrieval Augmented Generation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2406.13249v2",
+      "metadata": {
+        "authors": [
+          "Fuda Ye",
+          "Shuangyin Li",
+          "Yongqi Zhang",
+          "Lei Chen"
+        ],
+        "published": "2024-06-19T06:19:48+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI",
+          "cs.IR"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2406.13249v2",
+        "collected_at": "2025-08-07T14:33:38.373364"
+      }
+    },
+    {
+      "content": "Title: A Survey on Retrieval-Augmented Text Generation\n\nAbstract:\nRecently, retrieval-augmented text generation attracted increasing attention\nof the computational linguistics community. Compared with conventional\ngeneration models, retrieval-augmented text generation has remarkable\nadvantages and particularly has achieved state-of-the-art performance in many\nNLP tasks. This paper aims to conduct a survey about retrieval-augmented text\ngeneration. It firstly highlights the generic paradigm of retrieval-augmented\ngeneration, and then it reviews notable approaches according to different tasks\nincluding dialogue response generation, machine translation, and other\ngeneration tasks. Finally, it points out some important directions on top of\nrecent methods to facilitate future research.",
+      "title": "A Survey on Retrieval-Augmented Text Generation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2202.01110v2",
+      "metadata": {
+        "authors": [
+          "Huayang Li",
+          "Yixuan Su",
+          "Deng Cai",
+          "Yan Wang",
+          "Lemao Liu"
+        ],
+        "published": "2022-02-02T16:18:41+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2202.01110v2",
+        "collected_at": "2025-08-07T14:33:38.573828"
+      }
+    },
+    {
+      "content": "Title: Meta-prompting Optimized Retrieval-augmented Generation\n\nAbstract:\nRetrieval-augmented generation resorts to content retrieved from external\nsources in order to leverage the performance of large language models in\ndownstream tasks. The excessive volume of retrieved content, the possible\ndispersion of its parts, or their out of focus range may happen nevertheless to\neventually have a detrimental rather than an incremental effect. To mitigate\nthis issue and improve retrieval-augmented generation, we propose a method to\nrefine the retrieved content before it is included in the prompt by resorting\nto meta-prompting optimization. Put to empirical test with the demanding\nmulti-hop question answering task from the StrategyQA dataset, the evaluation\nresults indicate that this method outperforms a similar retrieval-augmented\nsystem but without this method by over 30%.",
+      "title": "Meta-prompting Optimized Retrieval-augmented Generation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2407.03955v1",
+      "metadata": {
+        "authors": [
+          "João Rodrigues",
+          "António Branco"
+        ],
+        "published": "2024-07-04T14:20:12+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2407.03955v1",
+        "collected_at": "2025-08-07T14:33:38.774129"
+      }
+    },
+    {
+      "content": "Title: End-to-End Trainable Retrieval-Augmented Generation for Relation Extraction\n\nAbstract:\nThis paper addresses a crucial challenge in retrieval-augmented\ngeneration-based relation extractors; the end-to-end training is not applicable\nto conventional retrieval-augmented generation due to the non-differentiable\nnature of instance retrieval. This problem prevents the instance retrievers\nfrom being optimized for the relation extraction task, and conventionally it\nmust be trained with an objective different from that for relation extraction.\nTo address this issue, we propose a novel End-to-end Trainable\nRetrieval-Augmented Generation (ETRAG), which allows end-to-end optimization of\nthe entire model, including the retriever, for the relation extraction\nobjective by utilizing a differentiable selection of the $k$ nearest instances.\nWe evaluate the relation extraction performance of ETRAG on the TACRED dataset,\nwhich is a standard benchmark for relation extraction. ETRAG demonstrates\nconsistent improvements against the baseline model as retrieved instances are\nadded. Furthermore, the analysis of instances retrieved by the end-to-end\ntrained retriever confirms that the retrieved instances contain common relation\nlabels or entities with the query and are specialized for the target task. Our\nfindings provide a promising foundation for future research on\nretrieval-augmented generation and the broader applications of text generation\nin Natural Language Processing.",
+      "title": "End-to-End Trainable Retrieval-Augmented Generation for Relation Extraction",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2406.03790v2",
+      "metadata": {
+        "authors": [
+          "Kohei Makino",
+          "Makoto Miwa",
+          "Yutaka Sasaki"
+        ],
+        "published": "2024-06-06T07:01:50+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2406.03790v2",
+        "collected_at": "2025-08-07T14:33:38.974612"
+      }
+    },
+    {
+      "content": "Title: DuetRAG: Collaborative Retrieval-Augmented Generation\n\nAbstract:\nRetrieval-Augmented Generation (RAG) methods augment the input of Large\nLanguage Models (LLMs) with relevant retrieved passages, reducing factual\nerrors in knowledge-intensive tasks. However, contemporary RAG approaches\nsuffer from irrelevant knowledge retrieval issues in complex domain questions\n(e.g., HotPot QA) due to the lack of corresponding domain knowledge, leading to\nlow-quality generations. To address this issue, we propose a novel\nCollaborative Retrieval-Augmented Generation framework, DuetRAG. Our\nbootstrapping philosophy is to simultaneously integrate the domain fintuning\nand RAG models to improve the knowledge retrieval quality, thereby enhancing\ngeneration quality. Finally, we demonstrate DuetRAG' s matches with expert\nhuman researchers on HotPot QA.",
+      "title": "DuetRAG: Collaborative Retrieval-Augmented Generation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2405.13002v1",
+      "metadata": {
+        "authors": [
+          "Dian Jiao",
+          "Li Cai",
+          "Jingsheng Huang",
+          "Wenqiao Zhang",
+          "Siliang Tang",
+          "Yueting Zhuang"
+        ],
+        "published": "2024-05-12T09:48:28+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2405.13002v1",
+        "collected_at": "2025-08-07T14:33:39.175051"
+      }
+    },
+    {
+      "content": "Title: Retrieval-Augmented Generation: A Comprehensive Survey of Architectures, Enhancements, and Robustness Frontiers\n\nAbstract:\nRetrieval-Augmented Generation (RAG) has emerged as a powerful paradigm to\nenhance large language models (LLMs) by conditioning generation on external\nevidence retrieved at inference time. While RAG addresses critical limitations\nof parametric knowledge storage-such as factual inconsistency and domain\ninflexibility-it introduces new challenges in retrieval quality, grounding\nfidelity, pipeline efficiency, and robustness against noisy or adversarial\ninputs. This survey provides a comprehensive synthesis of recent advances in\nRAG systems, offering a taxonomy that categorizes architectures into\nretriever-centric, generator-centric, hybrid, and robustness-oriented designs.\nWe systematically analyze enhancements across retrieval optimization, context\nfiltering, decoding control, and efficiency improvements, supported by\ncomparative performance analyses on short-form and multi-hop question answering\ntasks. Furthermore, we review state-of-the-art evaluation frameworks and\nbenchmarks, highlighting trends in retrieval-aware evaluation, robustness\ntesting, and federated retrieval settings. Our analysis reveals recurring\ntrade-offs between retrieval precision and generation flexibility, efficiency\nand faithfulness, and modularity and coordination. We conclude by identifying\nopen challenges and future research directions, including adaptive retrieval\narchitectures, real-time retrieval integration, structured reasoning over\nmulti-hop evidence, and privacy-preserving retrieval mechanisms. This survey\naims to consolidate current knowledge in RAG research and serve as a foundation\nfor the next generation of retrieval-augmented language modeling systems.",
+      "title": "Retrieval-Augmented Generation: A Comprehensive Survey of Architectures, Enhancements, and Robustness Frontiers",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2506.00054v1",
+      "metadata": {
+        "authors": [
+          "Chaitanya Sharma"
+        ],
+        "published": "2025-05-28T22:57:04+00:00",
+        "categories": [
+          "cs.IR",
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2506.00054v1",
+        "collected_at": "2025-08-07T14:33:39.375707"
+      }
+    },
+    {
+      "content": "Title: Controlled Retrieval-augmented Context Evaluation for Long-form RAG\n\nAbstract:\nRetrieval-augmented generation (RAG) enhances large language models by\nincorporating context retrieved from external knowledge sources. While the\neffectiveness of the retrieval module is typically evaluated with\nrelevance-based ranking metrics, such metrics may be insufficient to reflect\nthe retrieval's impact on the final RAG result, especially in long-form\ngeneration scenarios. We argue that providing a comprehensive\nretrieval-augmented context is important for long-form RAG tasks like report\ngeneration and propose metrics for assessing the context independent of\ngeneration. We introduce CRUX, a \\textbf{C}ontrolled\n\\textbf{R}etrieval-a\\textbf{U}gmented conte\\textbf{X}t evaluation framework\ndesigned to directly assess retrieval-augmented contexts. This framework uses\nhuman-written summaries to control the information scope of knowledge, enabling\nus to measure how well the context covers information essential for long-form\ngeneration. CRUX uses question-based evaluation to assess RAG's retrieval in a\nfine-grained manner. Empirical results show that CRUX offers more reflective\nand diagnostic evaluation. Our findings also reveal substantial room for\nimprovement in current retrieval methods, pointing to promising directions for\nadvancing RAG's retrieval. Our data and code are publicly available to support\nand advance future research on retrieval.",
+      "title": "Controlled Retrieval-augmented Context Evaluation for Long-form RAG",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2506.20051v1",
+      "metadata": {
+        "authors": [
+          "Jia-Huei Ju",
+          "Suzan Verberne",
+          "Maarten de Rijke",
+          "Andrew Yates"
+        ],
+        "published": "2025-06-24T23:17:48+00:00",
+        "categories": [
+          "cs.IR"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2506.20051v1",
+        "collected_at": "2025-08-07T14:33:39.576242"
+      }
+    },
+    {
+      "content": "Title: Context Tuning for Retrieval Augmented Generation\n\nAbstract:\nLarge language models (LLMs) have the remarkable ability to solve new tasks\nwith just a few examples, but they need access to the right tools. Retrieval\nAugmented Generation (RAG) addresses this problem by retrieving a list of\nrelevant tools for a given task. However, RAG's tool retrieval step requires\nall the required information to be explicitly present in the query. This is a\nlimitation, as semantic search, the widely adopted tool retrieval method, can\nfail when the query is incomplete or lacks context. To address this limitation,\nwe propose Context Tuning for RAG, which employs a smart context retrieval\nsystem to fetch relevant information that improves both tool retrieval and plan\ngeneration. Our lightweight context retrieval model uses numerical,\ncategorical, and habitual usage signals to retrieve and rank context items. Our\nempirical results demonstrate that context tuning significantly enhances\nsemantic search, achieving a 3.5-fold and 1.5-fold improvement in Recall@K for\ncontext retrieval and tool retrieval tasks respectively, and resulting in an\n11.6% increase in LLM-based planner accuracy. Additionally, we show that our\nproposed lightweight model using Reciprocal Rank Fusion (RRF) with LambdaMART\noutperforms GPT-4 based retrieval. Moreover, we observe context augmentation at\nplan generation, even after tool retrieval, reduces hallucination.",
+      "title": "Context Tuning for Retrieval Augmented Generation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2312.05708v1",
+      "metadata": {
+        "authors": [
+          "Raviteja Anantha",
+          "Tharun Bethi",
+          "Danil Vodianik",
+          "Srinivas Chappidi"
+        ],
+        "published": "2023-12-09T23:33:16+00:00",
+        "categories": [
+          "cs.IR",
+          "cs.AI",
+          "cs.LG"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2312.05708v1",
+        "collected_at": "2025-08-07T14:33:39.776777"
+      }
+    },
+    {
+      "content": "Title: From Retrieval to Generation: Comparing Different Approaches\n\nAbstract:\nKnowledge-intensive tasks, particularly open-domain question answering\n(ODQA), document reranking, and retrieval-augmented language modeling, require\na balance between retrieval accuracy and generative flexibility. Traditional\nretrieval models such as BM25 and Dense Passage Retrieval (DPR), efficiently\nretrieve from large corpora but often lack semantic depth. Generative models\nlike GPT-4-o provide richer contextual understanding but face challenges in\nmaintaining factual consistency. In this work, we conduct a systematic\nevaluation of retrieval-based, generation-based, and hybrid models, with a\nprimary focus on their performance in ODQA and related retrieval-augmented\ntasks. Our results show that dense retrievers, particularly DPR, achieve strong\nperformance in ODQA with a top-1 accuracy of 50.17\\% on NQ, while hybrid models\nimprove nDCG@10 scores on BEIR from 43.42 (BM25) to 52.59, demonstrating their\nstrength in document reranking. Additionally, we analyze language modeling\ntasks using WikiText-103, showing that retrieval-based approaches like BM25\nachieve lower perplexity compared to generative and hybrid methods,\nhighlighting their utility in retrieval-augmented generation. By providing\ndetailed comparisons and practical insights into the conditions where each\napproach excels, we aim to facilitate future optimizations in retrieval,\nreranking, and generative models for ODQA and related knowledge-intensive\napplications.",
+      "title": "From Retrieval to Generation: Comparing Different Approaches",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2502.20245v1",
+      "metadata": {
+        "authors": [
+          "Abdelrahman Abdallah",
+          "Jamshid Mozafari",
+          "Bhawna Piryani",
+          "Mohammed Ali",
+          "Adam Jatowt"
+        ],
+        "published": "2025-02-27T16:29:14+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2502.20245v1",
+        "collected_at": "2025-08-07T14:33:39.977279"
+      }
+    },
+    {
+      "content": "Title: Augmentation-Adapted Retriever Improves Generalization of Language Models as Generic Plug-In\n\nAbstract:\nRetrieval augmentation can aid language models (LMs) in knowledge-intensive\ntasks by supplying them with external information. Prior works on retrieval\naugmentation usually jointly fine-tune the retriever and the LM, making them\nclosely coupled. In this paper, we explore the scheme of generic retrieval\nplug-in: the retriever is to assist target LMs that may not be known beforehand\nor are unable to be fine-tuned together. To retrieve useful documents for\nunseen target LMs, we propose augmentation-adapted retriever (AAR), which\nlearns LM's preferences obtained from a known source LM. Experiments on the\nMMLU and PopQA datasets demonstrate that our AAR trained with a small source LM\nis able to significantly improve the zero-shot generalization of larger target\nLMs ranging from 250M Flan-T5 to 175B InstructGPT. Further analysis indicates\nthat the preferences of different LMs overlap, enabling AAR trained with a\nsingle source LM to serve as a generic plug-in for various target LMs. Our code\nis open-sourced at https://github.com/OpenMatch/Augmentation-Adapted-Retriever.",
+      "title": "Augmentation-Adapted Retriever Improves Generalization of Language Models as Generic Plug-In",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2305.17331v1",
+      "metadata": {
+        "authors": [
+          "Zichun Yu",
+          "Chenyan Xiong",
+          "Shi Yu",
+          "Zhiyuan Liu"
+        ],
+        "published": "2023-05-27T02:26:52+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.LG"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2305.17331v1",
+        "collected_at": "2025-08-07T14:33:40.177771"
+      }
+    },
+    {
+      "content": "Title: Lost in Translation: Large Language Models in Non-English Content Analysis\n\nAbstract:\nIn recent years, large language models (e.g., Open AI's GPT-4, Meta's LLaMa,\nGoogle's PaLM) have become the dominant approach for building AI systems to\nanalyze and generate language online. However, the automated systems that\nincreasingly mediate our interactions online -- such as chatbots, content\nmoderation systems, and search engines -- are primarily designed for and work\nfar more effectively in English than in the world's other 7,000 languages.\nRecently, researchers and technology companies have attempted to extend the\ncapabilities of large language models into languages other than English by\nbuilding what are called multilingual language models.\n  In this paper, we explain how these multilingual language models work and\nexplore their capabilities and limits. Part I provides a simple technical\nexplanation of how large language models work, why there is a gap in available\ndata between English and other languages, and how multilingual language models\nattempt to bridge that gap. Part II accounts for the challenges of doing\ncontent analysis with large language models in general and multilingual\nlanguage models in particular. Part III offers recommendations for companies,\nresearchers, and policymakers to keep in mind when considering researching,\ndeveloping and deploying large and multilingual language models.",
+      "title": "Lost in Translation: Large Language Models in Non-English Content Analysis",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2306.07377v1",
+      "metadata": {
+        "authors": [
+          "Gabriel Nicholas",
+          "Aliya Bhatia"
+        ],
+        "published": "2023-06-12T19:10:47+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2306.07377v1",
+        "collected_at": "2025-08-07T14:33:41.344824"
+      }
+    },
+    {
+      "content": "Title: Cedille: A large autoregressive French language model\n\nAbstract:\nScaling up the size and training of autoregressive language models has\nenabled novel ways of solving Natural Language Processing tasks using zero-shot\nand few-shot learning. While extreme-scale language models such as GPT-3 offer\nmultilingual capabilities, zero-shot learning for languages other than English\nremain largely unexplored. Here, we introduce Cedille, a large open source\nauto-regressive language model, specifically trained for the French language.\nOur results show that Cedille outperforms existing French language models and\nis competitive with GPT-3 on a range of French zero-shot benchmarks.\nFurthermore, we provide an in-depth comparison of the toxicity exhibited by\nthese models, showing that Cedille marks an improvement in language model\nsafety thanks to dataset filtering.",
+      "title": "Cedille: A large autoregressive French language model",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2202.03371v1",
+      "metadata": {
+        "authors": [
+          "Martin Müller",
+          "Florian Laurent"
+        ],
+        "published": "2022-02-07T17:40:43+00:00",
+        "categories": [
+          "cs.CL",
+          "68T50",
+          "I.2.7"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2202.03371v1",
+        "collected_at": "2025-08-07T14:33:41.545314"
+      }
+    },
+    {
+      "content": "Title: How Good are Commercial Large Language Models on African Languages?\n\nAbstract:\nRecent advancements in Natural Language Processing (NLP) has led to the\nproliferation of large pretrained language models. These models have been shown\nto yield good performance, using in-context learning, even on unseen tasks and\nlanguages. They have also been exposed as commercial APIs as a form of\nlanguage-model-as-a-service, with great adoption. However, their performance on\nAfrican languages is largely unknown. We present a preliminary analysis of\ncommercial large language models on two tasks (machine translation and text\nclassification) across eight African languages, spanning different language\nfamilies and geographical areas. Our results suggest that commercial language\nmodels produce below-par performance on African languages. We also find that\nthey perform better on text classification than machine translation. In\ngeneral, our findings present a call-to-action to ensure African languages are\nwell represented in commercial large language models, given their growing\npopularity.",
+      "title": "How Good are Commercial Large Language Models on African Languages?",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2305.06530v1",
+      "metadata": {
+        "authors": [
+          "Jessica Ojo",
+          "Kelechi Ogueji"
+        ],
+        "published": "2023-05-11T02:29:53+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI",
+          "cs.LG"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2305.06530v1",
+        "collected_at": "2025-08-07T14:33:41.745779"
+      }
+    },
+    {
+      "content": "Title: Goldfish: Monolingual Language Models for 350 Languages\n\nAbstract:\nFor many low-resource languages, the only available language models are large\nmultilingual models trained on many languages simultaneously. However, using\nFLORES perplexity as a metric, we find that these models perform worse than\nbigrams for many languages (e.g. 24% of languages in XGLM 4.5B; 43% in BLOOM\n7.1B). To facilitate research that focuses on low-resource languages, we\npre-train and release Goldfish, a suite of monolingual autoregressive\nTransformer language models up to 125M parameters for 350 languages. The\nGoldfish reach lower FLORES perplexities than BLOOM, XGLM, and MaLA-500 on 98\nof 204 FLORES languages, despite each Goldfish model being over 10x smaller.\nHowever, the Goldfish significantly underperform larger multilingual models on\nreasoning benchmarks, suggesting that for low-resource languages,\nmultilinguality primarily improves general reasoning abilities rather than\nbasic text generation. We release models trained on 5MB (350 languages), 10MB\n(288 languages), 100MB (166 languages), and 1GB (83 languages) of text data\nwhere available. The Goldfish models are available as baselines, fine-tuning\nsources, or augmentations to existing models in low-resource NLP research, and\nthey are further useful for crosslinguistic studies requiring maximally\ncomparable models across languages.",
+      "title": "Goldfish: Monolingual Language Models for 350 Languages",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2408.10441v1",
+      "metadata": {
+        "authors": [
+          "Tyler A. Chang",
+          "Catherine Arnett",
+          "Zhuowen Tu",
+          "Benjamin K. Bergen"
+        ],
+        "published": "2024-08-19T22:31:21+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2408.10441v1",
+        "collected_at": "2025-08-07T14:33:41.946344"
+      }
+    },
+    {
+      "content": "Title: Modelling Language\n\nAbstract:\nThis paper argues that large language models have a valuable scientific role\nto play in serving as scientific models of a language. Linguistic study should\nnot only be concerned with the cognitive processes behind linguistic\ncompetence, but also with language understood as an external, social entity.\nOnce this is recognized, the value of large language models as scientific\nmodels becomes clear. This paper defends this position against a number of\narguments to the effect that language models provide no linguistic insight. It\nalso draws upon recent work in philosophy of science to show how large language\nmodels could serve as scientific models.",
+      "title": "Modelling Language",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2404.09579v1",
+      "metadata": {
+        "authors": [
+          "Jumbly Grindrod"
+        ],
+        "published": "2024-04-15T08:40:01+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2404.09579v1",
+        "collected_at": "2025-08-07T14:33:42.146934"
+      }
+    },
+    {
+      "content": "Title: LLaMA-Reg: Using LLaMA 2 for Unsupervised Medical Image Registration\n\nAbstract:\nMedical image registration is an essential topic in medical image analysis.\nIn this paper, we propose a method for medical image registration using a\npretrained large language model. We find that using the pretrained large\nlanguage model to encode deep features of the medical images in the\nregistration model can effectively improve image registration accuracy,\nindicating the great potential of the large language model in medical image\nregistration tasks. We use dual encoders to perform deep feature extraction on\nimage pairs and then input the features into the pretrained large language\nmodel. To adapt the large language model to our registration task, the weights\nof the large language model are frozen in the registration model, and an\nadapter is utilized to fine-tune the large language model, which aims at (a)\nmapping the visual tokens to the language space before the large language model\ncomputing, (b) project the modeled language tokens output from the large\nlanguage model to the visual space. Our method combines output features from\nthe fine-tuned large language model with the features output from each encoder\nlayer to gradually generate the deformation fields required for registration in\nthe decoder. To demonstrate the effectiveness of the large prediction model in\nregistration tasks, we conducted experiments on knee and brain MRI and achieved\nstate-of-the-art results.",
+      "title": "LLaMA-Reg: Using LLaMA 2 for Unsupervised Medical Image Registration",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2405.18774v1",
+      "metadata": {
+        "authors": [
+          "Mingrui Ma",
+          "Yu Yang"
+        ],
+        "published": "2024-05-29T05:26:25+00:00",
+        "categories": [
+          "cs.CV"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2405.18774v1",
+        "collected_at": "2025-08-07T14:33:42.347310"
+      }
+    },
+    {
+      "content": "Title: Using Sign Language Production as Data Augmentation to enhance Sign Language Translation\n\nAbstract:\nMachine learning models fundamentally rely on large quantities of\nhigh-quality data. Collecting the necessary data for these models can be\nchallenging due to cost, scarcity, and privacy restrictions. Signed languages\nare visual languages used by the deaf community and are considered low-resource\nlanguages. Sign language datasets are often orders of magnitude smaller than\ntheir spoken language counterparts. Sign Language Production is the task of\ngenerating sign language videos from spoken language sentences, while Sign\nLanguage Translation is the reverse translation task. Here, we propose\nleveraging recent advancements in Sign Language Production to augment existing\nsign language datasets and enhance the performance of Sign Language Translation\nmodels. For this, we utilize three techniques: a skeleton-based approach to\nproduction, sign stitching, and two photo-realistic generative models, SignGAN\nand SignSplat. We evaluate the effectiveness of these techniques in enhancing\nthe performance of Sign Language Translation models by generating variation in\nthe signer's appearance and the motion of the skeletal data. Our results\ndemonstrate that the proposed methods can effectively augment existing datasets\nand enhance the performance of Sign Language Translation models by up to 19%,\npaving the way for more robust and accurate Sign Language Translation systems,\neven in resource-constrained environments.",
+      "title": "Using Sign Language Production as Data Augmentation to enhance Sign Language Translation",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2506.09643v1",
+      "metadata": {
+        "authors": [
+          "Harry Walsh",
+          "Maksym Ivashechkin",
+          "Richard Bowden"
+        ],
+        "published": "2025-06-11T11:56:51+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.CV"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2506.09643v1",
+        "collected_at": "2025-08-07T14:33:42.547880"
+      }
+    },
+    {
+      "content": "Title: A Precis of Language Models are not Models of Language\n\nAbstract:\nNatural Language Processing is one of the leading application areas in the\ncurrent resurgence of Artificial Intelligence, spearheaded by Artificial Neural\nNetworks. We show that despite their many successes at performing linguistic\ntasks, Large Neural Language Models are ill-suited as comprehensive models of\nnatural language. The wider implication is that, in spite of the often\noverbearing optimism about AI, modern neural models do not represent a\nrevolution in our understanding of cognition.",
+      "title": "A Precis of Language Models are not Models of Language",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2205.07634v1",
+      "metadata": {
+        "authors": [
+          "Csaba Veres"
+        ],
+        "published": "2022-05-16T12:50:58+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2205.07634v1",
+        "collected_at": "2025-08-07T14:33:42.748437"
+      }
+    },
+    {
+      "content": "Title: A Survey of Large Language Models for European Languages\n\nAbstract:\nLarge Language Models (LLMs) have gained significant attention due to their\nhigh performance on a wide range of natural language tasks since the release of\nChatGPT. The LLMs learn to understand and generate language by training\nbillions of model parameters on vast volumes of text data. Despite being a\nrelatively new field, LLM research is rapidly advancing in various directions.\nIn this paper, we present an overview of LLM families, including LLaMA, PaLM,\nGPT, and MoE, and the methods developed to create and enhance LLMs for official\nEuropean Union (EU) languages. We provide a comprehensive summary of common\nmonolingual and multilingual datasets used for pretraining large language\nmodels.",
+      "title": "A Survey of Large Language Models for European Languages",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2408.15040v2",
+      "metadata": {
+        "authors": [
+          "Wazir Ali",
+          "Sampo Pyysalo"
+        ],
+        "published": "2024-08-27T13:10:05+00:00",
+        "categories": [
+          "cs.CL"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2408.15040v2",
+        "collected_at": "2025-08-07T14:33:42.948983"
+      }
+    },
+    {
+      "content": "Title: Beyond the limitations of any imaginable mechanism: large language models and psycholinguistics\n\nAbstract:\nLarge language models are not detailed models of human linguistic processing.\nThey are, however, extremely successful at their primary task: providing a\nmodel for language. For this reason and because there are no animal models for\nlanguage, large language models are important in psycholinguistics: they are\nuseful as a practical tool, as an illustrative comparative, and\nphilosophically, as a basis for recasting the relationship between language and\nthought.",
+      "title": "Beyond the limitations of any imaginable mechanism: large language models and psycholinguistics",
+      "source": "arxiv",
+      "url": "http://arxiv.org/abs/2303.00077v1",
+      "metadata": {
+        "authors": [
+          "Conor Houghton",
+          "Nina Kazanina",
+          "Priyanka Sukumaran"
+        ],
+        "published": "2023-02-28T20:49:38+00:00",
+        "categories": [
+          "cs.CL",
+          "cs.AI"
+        ],
+        "doi": null,
+        "pdf_url": "http://arxiv.org/pdf/2303.00077v1",
+        "collected_at": "2025-08-07T14:33:43.149306"
+      }
+    }
+  ],
+  "count": 20,
+  "created_at": "2025-08-07T14:33:46.891307",
+  "source_summary": {
+    "arxiv": 20
+  }
+}
