@@ -1,0 +1,20 @@
+{
+  "direct_llm": {
+    "total_queries": 12,
+    "success_count": 12,
+    "avg_quality": 0.43054227811140006,
+    "avg_cost": 0.0014303502953290003,
+    "avg_time": 1.2729074574326298,
+    "complexity_performance": {
+      "simple": 0.6000000000000001,
+      "medium": 0.6000000000000001,
+      "complex": 0.6
+    },
+    "category_performance": {
+      "factual": 0.6000000000000001,
+      "analytical": 0.6000000000000001,
+      "comparative": 0.6000000000000001,
+      "research": 0.6
+    }
+  }
+}
