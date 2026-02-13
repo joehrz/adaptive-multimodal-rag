@@ -5,15 +5,26 @@ Analyzes query complexity to determine optimal RAG strategy
 
 import time
 import logging
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 
 try:
-    import requests
-    REQUESTS_AVAILABLE = True
+    import ollama
+    OLLAMA_AVAILABLE = True
 except ImportError:
-    REQUESTS_AVAILABLE = False
+    OLLAMA_AVAILABLE = False
+
+# Import config system
+try:
+    from src.core.config import get_config, Config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from src.core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -54,43 +65,61 @@ class OllamaQueryAnalyzer:
     - 8-10: Complex (analysis, comparison, multi-step reasoning)
     """
 
-    def __init__(self,
-                 model: str = "qwen2.5:14b",
-                 ollama_url: str = "http://localhost:11434",
-                 temperature: float = 0.1, # Low temp for consistent scoring
-                 verbose: bool = True):
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        verbose: Optional[bool] = None,
+        config: Optional['Config'] = None,
+        timeout: Optional[int] = None,
+    ):
         """
         Initialize query analyzer
 
         Args:
             model: Ollama model to use
-            ollama_url: URL of Ollama server
             temperature: Generation temperature (low for consistency)
             verbose: Enable verbose logging
+            config: Optional Config object (uses global config if not provided)
+            timeout: Timeout for LLM calls in seconds
         """
 
-        if not REQUESTS_AVAILABLE:
-            raise ImportError("requests package required")
+        if not OLLAMA_AVAILABLE:
+            raise ImportError("ollama package not found. Install with: pip install ollama")
 
-        self.model = model
-        self.ollama_url = ollama_url
-        self.temperature = temperature
-        self.verbose = verbose
+        # Load config - use provided config or global config
+        if config is None and CONFIG_AVAILABLE:
+            config = get_config()
+
+        # Apply config defaults, then override with explicit parameters
+        if config:
+            self.model = model if model is not None else config.llm.model
+            self.temperature = temperature if temperature is not None else 0.1  # Low temp for consistent scoring
+            self.verbose = verbose if verbose is not None else config.logging.verbose
+            self.timeout = timeout if timeout is not None else config.llm.timeout
+        else:
+            # Fallback to hardcoded defaults if no config available
+            self.model = model or "qwen2.5:14b"
+            self.temperature = temperature if temperature is not None else 0.1
+            self.verbose = verbose if verbose is not None else True
+            self.timeout = timeout or 120
 
         # Test connection
         self._test_connection()
 
         if self.verbose:
-            logger.info(f"OllamaQueryAnalyzer initialized with model: {model}")
+            logger.info(f"OllamaQueryAnalyzer initialized with model: {self.model}")
 
     def _test_connection(self):
-        """Test Ollama server connection"""
+        """Test Ollama server connection and verify model availability"""
         try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
-            if response.status_code != 200:
-                raise ConnectionError(f"Ollama server returned status {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Failed to connect to Ollama at {self.ollama_url}: {e}")
+            available_models = ollama.list()
+            model_names = [m.model for m in available_models.models]
+
+            if self.model not in model_names:
+                raise ValueError(f"Model {self.model} not available. Run: ollama pull {self.model}")
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to Ollama: {e}")
 
     def analyze_query(self, query: str) -> QueryAnalysis:
         """
@@ -138,7 +167,7 @@ class OllamaQueryAnalyzer:
             characteristics=characteristics
         )
 
-    def _extract_characteristics(self, query: str) -> Dict[str, any]:
+    def _extract_characteristics(self, query: str) -> Dict[str, Any]:
         """
         Extract query characteristics using heuristics
 
@@ -219,10 +248,22 @@ Format your response as:
 Score: [number]
 Reasoning: [explanation]"""
 
-        result = self._call_ollama(prompt)
+        try:
+            response = ollama.generate(
+                model=self.model,
+                prompt=prompt,
+                options={
+                    'temperature': self.temperature,
+                    'num_predict': 150  # Short response
+                }
+            )
+            result = response['response']
+        except Exception as e:
+            logger.error(f"Error calling Ollama: {e}")
+            return 5, "Unable to analyze query complexity"
 
         # Parse response
-        score = 5 # Default
+        score = 5  # Default
         reasoning = result
 
         try:
@@ -230,44 +271,16 @@ Reasoning: [explanation]"""
             for line in lines:
                 if 'score:' in line.lower():
                     # Extract number
-                    import re
                     match = re.search(r'(\d+)', line)
                     if match:
                         score = int(match.group(1))
-                        score = max(0, min(10, score)) # Clamp to 0-10
+                        score = max(0, min(10, score))  # Clamp to 0-10
                 elif 'reasoning:' in line.lower():
                     reasoning = line.split(':', 1)[1].strip()
         except Exception as e:
             logger.warning(f"Failed to parse LLM response: {e}")
 
         return score, reasoning
-
-    def _call_ollama(self, prompt: str) -> str:
-        """Call Ollama API"""
-        try:
-            response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": self.temperature,
-                        "num_predict": 150 # Short response
-                    }
-                },
-                timeout=30
-            )
-
-            if response.status_code != 200:
-                raise RuntimeError(f"Ollama API error: {response.status_code}")
-
-            result = response.json()
-            return result.get("response", "")
-
-        except Exception as e:
-            logger.error(f"Error calling Ollama: {e}")
-            raise
 
 
 # Testing
