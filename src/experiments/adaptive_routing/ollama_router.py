@@ -9,11 +9,8 @@ from typing import Dict, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
-# Direct import to avoid __init__.py issues
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-from ollama_query_analyzer import OllamaQueryAnalyzer, QueryComplexity
+# Import from same package
+from src.experiments.adaptive_routing.ollama_query_analyzer import OllamaQueryAnalyzer, QueryComplexity
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +87,16 @@ class OllamaAdaptiveRouter:
         if self.verbose:
             logger.info("OllamaAdaptiveRouter initialized")
 
+    def _pattern_match(self, pattern: str, text: str) -> bool:
+        """Simple pattern matching with .* wildcard support"""
+        import re
+        # Convert simple pattern to regex
+        regex_pattern = pattern.replace('.*', '.*?')
+        try:
+            return bool(re.search(regex_pattern, text))
+        except re.error:
+            return pattern.replace('.*', '') in text
+
     def route_query(self, query: str) -> RoutingDecision:
         """
         Analyze query and select optimal strategy
@@ -105,6 +112,15 @@ class OllamaAdaptiveRouter:
         # Analyze query complexity
         analysis = self.query_analyzer.analyze_query(query)
 
+        # Check for summarization queries (should use retrieval-based strategies, NOT GraphRAG)
+        summarization_keywords = ['summarize', 'summary', 'summarise', 'overview', 'abstract',
+                                  'main points', 'key points', 'tldr', 'recap', 'brief',
+                                  'describe the paper', 'what does the paper say',
+                                  'related work', 'introduction', 'conclusion', 'methods',
+                                  'methodology', 'results section', 'discussion section']
+
+        is_summarization = any(keyword in query.lower() for keyword in summarization_keywords)
+
         # Check for multimodal needs (highest priority)
         visual_keywords = ['image', 'images', 'figure', 'figures', 'chart', 'charts',
                           'diagram', 'diagrams', 'table', 'tables',
@@ -114,15 +130,23 @@ class OllamaAdaptiveRouter:
         needs_multimodal = any(keyword in query.lower() for keyword in visual_keywords)
 
         # Check for multi-hop reasoning needs (GraphRAG)
-        graph_keywords = ['relationship', 'relationships', 'connect', 'connected', 'connection',
-                         'relate', 'relates', 'related', 'between', 'across', 'through',
-                         'chain', 'path', 'link', 'links', 'network', 'hierarchy',
-                         'compare', 'comparison', 'contrast', 'versus', 'vs', 'differ',
-                         'how does', 'how do', 'why does', 'why do', 'lead to', 'cause']
+        # Be more specific - require actual relationship reasoning patterns, not just keyword presence
+        graph_keywords = ['relationship between', 'how does .* relate to', 'connection between',
+                         'connect .* to', 'link between', 'path from .* to',
+                         'compare .* with', 'contrast .* and', 'versus',
+                         'how does .* affect', 'how do .* interact',
+                         'what leads to', 'cause of', 'impact of .* on']
 
+        # Use regex-like matching for more specific patterns
+        query_lower = query.lower()
         needs_graphrag = (
-            any(keyword in query.lower() for keyword in graph_keywords) and
-            analysis.complexity_score >= 5  # Only for medium+ complexity
+            not is_summarization and  # Never use GraphRAG for summarization
+            analysis.complexity_score >= 6 and  # Higher threshold for GraphRAG
+            any(
+                keyword in query_lower if ' ' not in keyword.replace('.*', ' ')
+                else self._pattern_match(keyword, query_lower)
+                for keyword in graph_keywords
+            )
         )
 
         if needs_multimodal:
