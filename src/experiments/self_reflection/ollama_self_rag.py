@@ -10,7 +10,9 @@ Reflection tokens evaluate:
 
 import time
 import logging
-from typing import Dict, List, Optional, Any, Iterator, Tuple
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Any, Iterator, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -21,6 +23,16 @@ except ImportError:
     OLLAMA_AVAILABLE = False
 
 from langchain.schema import Document
+
+# Import config system
+try:
+    from src.core.config import get_config, Config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from src.core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -201,13 +213,16 @@ class OllamaSelfRAG:
 
     def __init__(
         self,
-        model: str = "qwen2.5:14b",
+        model: Optional[str] = None,
         reflection_model: Optional[str] = None,
-        temperature: float = 0.3,
-        max_tokens: int = 1000,
-        max_regenerations: int = 2,
-        regeneration_threshold: float = 0.5,
-        verbose: bool = True
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        max_regenerations: Optional[int] = None,
+        regeneration_threshold: Optional[float] = None,
+        verbose: Optional[bool] = None,
+        config: Optional['Config'] = None,
+        timeout: Optional[int] = None,
+        reflection_temperature: Optional[float] = None,
     ):
         """
         Initialize Self-RAG system
@@ -220,17 +235,39 @@ class OllamaSelfRAG:
             max_regenerations: Maximum regeneration attempts
             regeneration_threshold: Score threshold for regeneration
             verbose: Enable verbose logging
+            config: Optional Config object (uses global config if not provided)
+            timeout: Timeout for LLM calls in seconds
+            reflection_temperature: Temperature for reflection assessments
         """
         if not OLLAMA_AVAILABLE:
             raise ImportError("ollama package not found. Install with: pip install ollama")
 
-        self.model = model
-        self.reflection_model = reflection_model or model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.max_regenerations = max_regenerations
-        self.regeneration_threshold = regeneration_threshold
-        self.verbose = verbose
+        # Load config - use provided config or global config
+        if config is None and CONFIG_AVAILABLE:
+            config = get_config()
+
+        # Apply config defaults, then override with explicit parameters
+        if config:
+            self.model = model if model is not None else config.llm.model
+            self.temperature = temperature if temperature is not None else config.llm.temperature
+            self.max_tokens = max_tokens if max_tokens is not None else config.llm.max_tokens
+            self.max_regenerations = max_regenerations if max_regenerations is not None else config.strategies.self_rag.max_regenerations
+            self.regeneration_threshold = regeneration_threshold if regeneration_threshold is not None else config.strategies.self_rag.quality_threshold
+            self.verbose = verbose if verbose is not None else config.logging.verbose
+            self.timeout = timeout if timeout is not None else config.llm.timeout
+            self.reflection_temperature = reflection_temperature if reflection_temperature is not None else config.strategies.self_rag.reflection_temperature
+        else:
+            # Fallback to hardcoded defaults if no config available
+            self.model = model or "qwen2.5:14b"
+            self.temperature = temperature if temperature is not None else 0.3
+            self.max_tokens = max_tokens or 1000
+            self.max_regenerations = max_regenerations or 2
+            self.regeneration_threshold = regeneration_threshold or 0.5
+            self.verbose = verbose if verbose is not None else True
+            self.timeout = timeout or 120
+            self.reflection_temperature = reflection_temperature or 0.1
+
+        self.reflection_model = reflection_model or self.model
 
         # Verify model availability
         try:
@@ -239,7 +276,7 @@ class OllamaSelfRAG:
             if self.model not in model_names:
                 raise ValueError(f"Model {self.model} not available. Run: ollama pull {self.model}")
             if self.verbose:
-                print(f"Self-RAG initialized with model: {self.model}")
+                logger.info(f"Self-RAG initialized with model: {self.model}")
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Ollama: {e}")
 
@@ -274,6 +311,48 @@ Answer:"""
         generation_time = time.time() - start_time
         return response['response'].strip(), generation_time
 
+    def _parse_reflection_token(self, response_text: str, token_patterns: Dict[str, Any]) -> Tuple[Any, str]:
+        """
+        Robustly parse a reflection token from LLM response.
+
+        Args:
+            response_text: Raw LLM response text
+            token_patterns: Dict mapping token enum values to their patterns
+
+        Returns:
+            Tuple of (matched_token, reasoning)
+        """
+        text_upper = response_text.upper()
+        reasoning = ""
+
+        # Try to extract reasoning first
+        reasoning_match = re.search(r'REASONING:\s*(.+?)(?:\n|$)', response_text, re.IGNORECASE | re.DOTALL)
+        if reasoning_match:
+            reasoning = reasoning_match.group(1).strip()
+
+        # Try to match tokens using word boundaries and specific patterns
+        # This prevents matching "NOT USEFUL" when looking for "USEFUL"
+        for token, pattern_info in token_patterns.items():
+            pattern = pattern_info.get('pattern')
+            excludes = pattern_info.get('excludes', [])
+
+            # Check exclusions first
+            excluded = False
+            for exclude in excludes:
+                if re.search(exclude, text_upper):
+                    excluded = True
+                    break
+
+            if excluded:
+                continue
+
+            # Check for the pattern
+            if re.search(pattern, text_upper):
+                return token, reasoning
+
+        # Return default (first token, which should be the "negative" case)
+        return list(token_patterns.keys())[-1], reasoning
+
     def _assess_relevance(self, query: str, documents: List[Document]) -> Tuple[RelevanceToken, str]:
         """Assess relevance of retrieved documents"""
         doc_summaries = "\n".join([
@@ -300,20 +379,29 @@ REASONING: [brief explanation]"""
         response = ollama.generate(
             model=self.reflection_model,
             prompt=prompt,
-            options={'temperature': 0.1, 'num_predict': 150}
+            options={
+                'temperature': self.reflection_temperature,
+                'num_predict': 150
+            }
         )
 
-        text = response['response'].upper()
+        # Use robust token parsing
+        token_patterns = {
+            RelevanceToken.RELEVANT: {
+                'pattern': r'\bRELEVANT\b',
+                'excludes': [r'\bPARTIALLY[_\s]*RELEVANT\b', r'\bIRRELEVANT\b', r'\bNOT\s+RELEVANT\b']
+            },
+            RelevanceToken.PARTIALLY_RELEVANT: {
+                'pattern': r'\bPARTIALLY[_\s]*RELEVANT\b',
+                'excludes': []
+            },
+            RelevanceToken.IRRELEVANT: {
+                'pattern': r'\b(IRRELEVANT|NOT\s+RELEVANT)\b',
+                'excludes': []
+            },
+        }
 
-        if "RELEVANT" in text and "PARTIALLY" not in text and "IRRELEVANT" not in text:
-            token = RelevanceToken.RELEVANT
-        elif "PARTIALLY" in text:
-            token = RelevanceToken.PARTIALLY_RELEVANT
-        else:
-            token = RelevanceToken.IRRELEVANT
-
-        reasoning = response['response'].split("REASONING:")[-1].strip() if "REASONING:" in response['response'] else ""
-
+        token, reasoning = self._parse_reflection_token(response['response'], token_patterns)
         return token, reasoning
 
     def _assess_support(self, answer: str, documents: List[Document]) -> Tuple[SupportToken, str]:
@@ -339,20 +427,29 @@ REASONING: [brief explanation]"""
         response = ollama.generate(
             model=self.reflection_model,
             prompt=prompt,
-            options={'temperature': 0.1, 'num_predict': 150}
+            options={
+                'temperature': self.reflection_temperature,
+                'num_predict': 150
+            }
         )
 
-        text = response['response'].upper()
+        # Use robust token parsing
+        token_patterns = {
+            SupportToken.FULLY_SUPPORTED: {
+                'pattern': r'\bFULLY[_\s]*SUPPORTED\b',
+                'excludes': [r'\bPARTIALLY[_\s]*SUPPORTED\b', r'\bNO[_\s]*SUPPORT\b', r'\bNOT\s+SUPPORTED\b']
+            },
+            SupportToken.PARTIALLY_SUPPORTED: {
+                'pattern': r'\bPARTIALLY[_\s]*SUPPORTED\b',
+                'excludes': []
+            },
+            SupportToken.NO_SUPPORT: {
+                'pattern': r'\b(NO[_\s]*SUPPORT|NOT\s+SUPPORTED|UNSUPPORTED)\b',
+                'excludes': []
+            },
+        }
 
-        if "FULLY_SUPPORTED" in text or ("FULLY" in text and "SUPPORTED" in text):
-            token = SupportToken.FULLY_SUPPORTED
-        elif "PARTIALLY" in text:
-            token = SupportToken.PARTIALLY_SUPPORTED
-        else:
-            token = SupportToken.NO_SUPPORT
-
-        reasoning = response['response'].split("REASONING:")[-1].strip() if "REASONING:" in response['response'] else ""
-
+        token, reasoning = self._parse_reflection_token(response['response'], token_patterns)
         return token, reasoning
 
     def _assess_utility(self, query: str, answer: str) -> Tuple[UtilityToken, str]:
@@ -375,27 +472,37 @@ REASONING: [brief explanation]"""
         response = ollama.generate(
             model=self.reflection_model,
             prompt=prompt,
-            options={'temperature': 0.1, 'num_predict': 150}
+            options={
+                'temperature': self.reflection_temperature,
+                'num_predict': 150
+            }
         )
 
-        text = response['response'].upper()
+        # Use robust token parsing
+        token_patterns = {
+            UtilityToken.USEFUL: {
+                'pattern': r'\bUSEFUL\b',
+                'excludes': [r'\bSOMEWHAT[_\s]*USEFUL\b', r'\bNOT[_\s]*USEFUL\b']
+            },
+            UtilityToken.SOMEWHAT_USEFUL: {
+                'pattern': r'\bSOMEWHAT[_\s]*USEFUL\b',
+                'excludes': []
+            },
+            UtilityToken.NOT_USEFUL: {
+                'pattern': r'\b(NOT[_\s]*USEFUL|USELESS)\b',
+                'excludes': []
+            },
+        }
 
-        if "USEFUL" in text and "NOT" not in text and "SOMEWHAT" not in text:
-            token = UtilityToken.USEFUL
-        elif "SOMEWHAT" in text:
-            token = UtilityToken.SOMEWHAT_USEFUL
-        else:
-            token = UtilityToken.NOT_USEFUL
-
-        reasoning = response['response'].split("REASONING:")[-1].strip() if "REASONING:" in response['response'] else ""
-
+        token, reasoning = self._parse_reflection_token(response['response'], token_patterns)
         return token, reasoning
 
     def reflect_on_answer(
         self,
         query: str,
         answer: str,
-        documents: List[Document]
+        documents: List[Document],
+        parallel: bool = True
     ) -> ReflectionResult:
         """
         Generate all reflection tokens for an answer
@@ -404,6 +511,7 @@ REASONING: [brief explanation]"""
             query: Original query
             answer: Generated answer
             documents: Retrieved documents
+            parallel: Run reflection assessments in parallel (default True)
 
         Returns:
             ReflectionResult with all assessments
@@ -411,22 +519,65 @@ REASONING: [brief explanation]"""
         start_time = time.time()
 
         if self.verbose:
-            print("\n[REFLECTION] Assessing answer quality...")
+            logger.info("[REFLECTION] Assessing answer quality..." + (" (parallel)" if parallel else " (sequential)"))
 
-        # Assess relevance
-        relevance, relevance_reasoning = self._assess_relevance(query, documents)
-        if self.verbose:
-            print(f"  Relevance: {relevance.value}")
+        if parallel:
+            # Run all 3 assessments in parallel for ~3x speedup
+            relevance = relevance_reasoning = None
+            support = support_reasoning = None
+            utility = utility_reasoning = None
 
-        # Assess support
-        support, support_reasoning = self._assess_support(answer, documents)
-        if self.verbose:
-            print(f"  Support: {support.value}")
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all tasks
+                future_relevance = executor.submit(self._assess_relevance, query, documents)
+                future_support = executor.submit(self._assess_support, answer, documents)
+                future_utility = executor.submit(self._assess_utility, query, answer)
 
-        # Assess utility
-        utility, utility_reasoning = self._assess_utility(query, answer)
-        if self.verbose:
-            print(f"  Utility: {utility.value}")
+                # Collect results as they complete
+                futures = {
+                    future_relevance: 'relevance',
+                    future_support: 'support',
+                    future_utility: 'utility'
+                }
+
+                for future in as_completed(futures):
+                    task_name = futures[future]
+                    try:
+                        result = future.result()
+                        if task_name == 'relevance':
+                            relevance, relevance_reasoning = result
+                            if self.verbose:
+                                logger.info(f"  Relevance: {relevance.value}")
+                        elif task_name == 'support':
+                            support, support_reasoning = result
+                            if self.verbose:
+                                logger.info(f"  Support: {support.value}")
+                        elif task_name == 'utility':
+                            utility, utility_reasoning = result
+                            if self.verbose:
+                                logger.info(f"  Utility: {utility.value}")
+                    except Exception as e:
+                        logger.error(f"  {task_name} assessment failed: {e}")
+                        # Set defaults on failure
+                        if task_name == 'relevance':
+                            relevance, relevance_reasoning = RelevanceToken.PARTIALLY_RELEVANT, f"Error: {e}"
+                        elif task_name == 'support':
+                            support, support_reasoning = SupportToken.PARTIALLY_SUPPORTED, f"Error: {e}"
+                        elif task_name == 'utility':
+                            utility, utility_reasoning = UtilityToken.SOMEWHAT_USEFUL, f"Error: {e}"
+        else:
+            # Sequential execution (original behavior)
+            relevance, relevance_reasoning = self._assess_relevance(query, documents)
+            if self.verbose:
+                logger.info(f"  Relevance: {relevance.value}")
+
+            support, support_reasoning = self._assess_support(answer, documents)
+            if self.verbose:
+                logger.info(f"  Support: {support.value}")
+
+            utility, utility_reasoning = self._assess_utility(query, answer)
+            if self.verbose:
+                logger.info(f"  Utility: {utility.value}")
 
         reflection_time = time.time() - start_time
 
@@ -441,9 +592,7 @@ REASONING: [brief explanation]"""
         )
 
         if self.verbose:
-            print(f"  Overall: {result.overall_score:.2f}")
-            if result.needs_regeneration:
-                print("  [!] Answer may need improvement")
+            logger.info(f"  Overall: {result.overall_score:.2f}" + (" [!] Needs improvement" if result.needs_regeneration else ""))
 
         return result
 
@@ -467,11 +616,10 @@ REASONING: [brief explanation]"""
         total_start = time.time()
 
         if self.verbose:
-            print(f"\n{'='*60}")
-            print(f"SELF-RAG QUERY")
-            print(f"Query: {query}")
-            print(f"Documents: {len(documents)}")
-            print('='*60)
+            logger.info(f"SELF-RAG QUERY: {query[:60]}... | Documents: {len(documents)}")
+
+        if not documents:
+            logger.warning("No documents provided - Self-RAG reflection may produce poor results")
 
         regeneration_count = 0
         best_answer = None
@@ -481,7 +629,7 @@ REASONING: [brief explanation]"""
 
         for attempt in range(self.max_regenerations + 1):
             if self.verbose:
-                print(f"\n[Generation {attempt + 1}]")
+                logger.info(f"[Generation {attempt + 1}]")
 
             # Generate answer
             answer, gen_time = self._generate_answer(query, documents)
@@ -503,7 +651,7 @@ REASONING: [brief explanation]"""
             if attempt < self.max_regenerations:
                 regeneration_count += 1
                 if self.verbose:
-                    print(f"[!] Score {reflection.overall_score:.2f} below threshold, regenerating...")
+                    logger.info(f"[!] Score {reflection.overall_score:.2f} below threshold {self.regeneration_threshold}, regenerating...")
 
         total_time = time.time() - total_start
 
@@ -519,13 +667,7 @@ REASONING: [brief explanation]"""
         )
 
         if self.verbose:
-            print(f"\n{'='*60}")
-            print(f"RESULT")
-            print(f"Answer: {answer[:200]}...")
-            print(f"Reflection: {best_reflection.summary()}")
-            print(f"Regenerations: {regeneration_count}")
-            print(f"Total time: {total_time:.1f}s")
-            print('='*60)
+            logger.info(f"SELF-RAG RESULT: score={best_score:.2f}, regenerations={regeneration_count}, time={total_time:.1f}s")
 
         return result
 
