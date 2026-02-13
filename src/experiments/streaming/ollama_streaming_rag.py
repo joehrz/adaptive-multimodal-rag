@@ -6,11 +6,31 @@ Provides real-time token-by-token generation for better UX
 import requests
 import json
 import time
-from typing import List, Iterator, Optional, Callable
+import logging
+from typing import List, Iterator, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 
 from langchain.schema import Document
+
+# Import config system
+try:
+    from src.core.config import get_config, Config
+    CONFIG_AVAILABLE = True
+except ImportError:
+    CONFIG_AVAILABLE = False
+
+# Import HyDE for real embedding-based retrieval
+try:
+    from src.experiments.hyde.ollama_hyde import OllamaHyDE
+    HYDE_AVAILABLE = True
+except ImportError:
+    HYDE_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from src.core.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class StreamingStage(Enum):
@@ -49,17 +69,59 @@ class OllamaStreamingRAG:
     - Real-time token generation
     - Progress updates for multi-step processes
     - Stage-based streaming (query analysis, retrieval, generation)
+    - Real HyDE embedding-based retrieval when use_hyde=True
     """
 
     def __init__(
         self,
-        model: str = "qwen2.5:14b",
-        ollama_url: str = "http://localhost:11434",
-        verbose: bool = True
+        model: Optional[str] = None,
+        ollama_url: Optional[str] = None,
+        verbose: Optional[bool] = None,
+        config: Optional['Config'] = None,
+        timeout: Optional[int] = None,
     ):
-        self.model = model
-        self.ollama_url = ollama_url
-        self.verbose = verbose
+        # Load config - use provided config or global config
+        if config is None and CONFIG_AVAILABLE:
+            config = get_config()
+
+        # Apply config defaults, then override with explicit parameters
+        if config:
+            self.model = model if model is not None else config.llm.model
+            self.ollama_url = ollama_url if ollama_url is not None else config.ollama.url
+            self.verbose = verbose if verbose is not None else config.logging.verbose
+            self.timeout = timeout if timeout is not None else config.ollama.timeout
+        else:
+            self.model = model or "qwen2.5:14b"
+            self.ollama_url = ollama_url or "http://localhost:11434"
+            self.verbose = verbose if verbose is not None else True
+            self.timeout = timeout or 300
+
+        # Initialize HyDE engine for real embedding-based retrieval
+        self._hyde_engine: Optional[OllamaHyDE] = None
+
+    def _get_hyde_engine(self) -> Optional['OllamaHyDE']:
+        """
+        Lazily initialize and return HyDE engine for embedding-based retrieval.
+
+        Returns:
+            OllamaHyDE instance if available, None otherwise
+        """
+        if not HYDE_AVAILABLE:
+            logger.warning("HyDE not available - falling back to text-based retrieval")
+            return None
+
+        if self._hyde_engine is None:
+            try:
+                self._hyde_engine = OllamaHyDE(
+                    model=self.model,
+                    verbose=self.verbose
+                )
+                logger.info("HyDE engine initialized for streaming RAG")
+            except Exception as e:
+                logger.error(f"Failed to initialize HyDE engine: {e}")
+                return None
+
+        return self._hyde_engine
 
     def stream_generate(
         self,
@@ -95,7 +157,7 @@ class OllamaStreamingRAG:
                     "stream": True
                 },
                 stream=True,
-                timeout=300
+                timeout=self.timeout
             )
             response.raise_for_status()
 
@@ -152,8 +214,7 @@ class OllamaStreamingRAG:
 
         except requests.RequestException as e:
             error_msg = f"Streaming error: {str(e)}"
-            if self.verbose:
-                print(f"Error: {error_msg}")
+            logger.error(error_msg)
 
             yield StreamChunk(
                 stage=StreamingStage.COMPLETE,
@@ -296,6 +357,8 @@ Analysis Document:"""
         query: str,
         documents: List[Document],
         use_hyde: bool = False,
+        vector_store: Optional[any] = None,
+        top_k: int = 5,
         on_token: Optional[Callable[[str], None]] = None,
         on_progress: Optional[Callable[[StreamingProgress], None]] = None
     ) -> Iterator[StreamChunk]:
@@ -304,8 +367,10 @@ Analysis Document:"""
 
         Args:
             query: User query
-            documents: Retrieved documents
-            use_hyde: Whether to use HyDE for hypothetical generation
+            documents: Retrieved documents (used if vector_store not provided)
+            use_hyde: Whether to use HyDE for hypothetical generation/retrieval
+            vector_store: Optional vector store for real HyDE embedding retrieval
+            top_k: Number of documents to retrieve with HyDE (default 5)
             on_token: Token callback
             on_progress: Progress callback
 
@@ -329,6 +394,9 @@ Analysis Document:"""
         )
 
         # Stage 2: HyDE (if enabled)
+        hyde_tokens = []
+        hyde_retrieved_docs = None
+
         if use_hyde:
             if on_progress:
                 on_progress(StreamingProgress(
@@ -345,32 +413,79 @@ Analysis Document:"""
                 timestamp=time.time()
             )
 
-            # Stream HyDE generation with document context
-            hyde_tokens = []
-            for chunk in self.stream_hyde_generation(query, documents=documents, on_token=on_token):
-                hyde_tokens.append(chunk.content)
-                yield chunk
+            # Check if we can use real HyDE embedding-based retrieval
+            hyde_engine = self._get_hyde_engine()
+
+            if hyde_engine is not None and vector_store is not None:
+                # Use real HyDE embedding-based retrieval
+                try:
+                    if on_progress:
+                        on_progress(StreamingProgress(
+                            stage=StreamingStage.GENERATING_HYPOTHETICALS,
+                            progress=0.35,
+                            message="Using HyDE embedding-based retrieval...",
+                            timestamp=time.time()
+                        ))
+
+                    # Generate hypothetical document and retrieve with embeddings
+                    hyde_result = hyde_engine.retrieve_with_hyde(
+                        query=query,
+                        vector_store=vector_store,
+                        top_k=top_k
+                    )
+
+                    # Store the HyDE-retrieved documents
+                    hyde_retrieved_docs = hyde_result.documents
+
+                    # Stream the hypothetical document content for UX
+                    hypothetical_content = hyde_result.hypothetical_document
+                    for i in range(0, len(hypothetical_content), 10):
+                        token = hypothetical_content[i:i+10]
+                        hyde_tokens.append(token)
+                        if on_token:
+                            on_token(token)
+                        yield StreamChunk(
+                            stage=StreamingStage.GENERATING_HYPOTHETICALS,
+                            content=token,
+                            metadata={"hyde_mode": "embedding_retrieval"},
+                            timestamp=time.time()
+                        )
+
+                    logger.info(f"HyDE embedding retrieval returned {len(hyde_retrieved_docs)} documents")
+
+                except Exception as e:
+                    logger.warning(f"HyDE embedding retrieval failed, falling back to streaming: {e}")
+                    hyde_engine = None  # Fall back to streaming generation
+
+            if hyde_engine is None or vector_store is None:
+                # Fall back to streaming HyDE generation (text-based, no embedding retrieval)
+                for chunk in self.stream_hyde_generation(query, documents=documents, on_token=on_token):
+                    hyde_tokens.append(chunk.content)
+                    yield chunk
 
             yield StreamChunk(
                 stage=StreamingStage.GENERATING_HYPOTHETICALS,
                 content="\n[Hypothetical document complete]\n\n",
-                metadata={"hyde_length": len("".join(hyde_tokens))},
+                metadata={"hyde_length": len("".join(hyde_tokens)), "used_embedding_retrieval": hyde_retrieved_docs is not None},
                 timestamp=time.time()
             )
 
         # Stage 3: Retrieval
+        retrieval_count = len(hyde_retrieved_docs) if hyde_retrieved_docs is not None else len(documents)
+        retrieval_method = "HyDE embedding retrieval" if hyde_retrieved_docs is not None else "standard retrieval"
+
         if on_progress:
             on_progress(StreamingProgress(
                 stage=StreamingStage.RETRIEVING_DOCS,
                 progress=0.5,
-                message=f"Retrieved {len(documents)} documents",
+                message=f"Retrieved {retrieval_count} documents via {retrieval_method}",
                 timestamp=time.time()
             ))
 
         yield StreamChunk(
             stage=StreamingStage.RETRIEVING_DOCS,
-            content=f"\n[Retrieved {len(documents)} relevant documents]\n\n",
-            metadata={"doc_count": len(documents)},
+            content=f"\n[Retrieved {retrieval_count} relevant documents via {retrieval_method}]\n\n",
+            metadata={"doc_count": retrieval_count, "retrieval_method": retrieval_method},
             timestamp=time.time()
         )
 
@@ -391,20 +506,25 @@ Analysis Document:"""
         )
 
         # Prepare final context
-        final_documents = documents
+        # Use HyDE-retrieved documents if available, otherwise use provided documents
+        if hyde_retrieved_docs is not None:
+            # Use documents retrieved via HyDE embedding similarity
+            final_documents = hyde_retrieved_docs
+            logger.info(f"Using {len(final_documents)} HyDE-retrieved documents for context")
+        else:
+            final_documents = documents
 
-        # If HyDE was used, add hypothetical document as additional context
+        # If HyDE was used (either mode), add hypothetical document as additional context
         if use_hyde and hyde_tokens:
             hyde_content = "".join(hyde_tokens)
             if hyde_content.strip():
                 # Create document from HyDE output
-                from langchain.schema import Document
                 hyde_doc = Document(
                     page_content=hyde_content,
                     metadata={"source": "HyDE_Analysis", "type": "hypothetical"}
                 )
-                # Add HyDE document to context
-                final_documents = [hyde_doc] + documents
+                # Add HyDE document to context (prepend for priority)
+                final_documents = [hyde_doc] + final_documents
 
         # Stream final answer with enhanced context
         yield from self.stream_rag_query(
