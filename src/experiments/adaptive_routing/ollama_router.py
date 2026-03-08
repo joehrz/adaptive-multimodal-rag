@@ -159,6 +159,15 @@ class OllamaAdaptiveRouter:
             strategy = RAGStrategy.GRAPHRAG
             reasoning = "Query requires multi-hop reasoning about relationships - using GraphRAG"
 
+        elif is_summarization:
+            # Summarization needs broad context retrieval - use HyDE at minimum
+            if analysis.complexity_score >= 8:
+                strategy = RAGStrategy.HYDE_SELF_RAG
+                reasoning = "Complex summarization query - HyDE + Self-RAG for comprehensive synthesis"
+            else:
+                strategy = RAGStrategy.HYDE
+                reasoning = "Summarization query requires broad context retrieval - HyDE improves coverage"
+
         # Select strategy based on complexity
         elif analysis.complexity_score <= 3:
             # Simple: Use baseline RAG

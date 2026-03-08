@@ -12,6 +12,11 @@ embeddings:
   model: "all-MiniLM-L6-v2"  # HuggingFace embedding model
   device: "cpu"              # Device for embeddings (cpu, cuda)
 
+# Ollama Server
+ollama:
+  url: "http://localhost:11434"  # Override with RAG_OLLAMA_URL env var for Docker
+  timeout: 120                   # Request timeout in seconds
+
 # Document Processing
 documents:
   chunk_size: 1000      # Size of document chunks in characters

@@ -330,9 +330,35 @@ Informative passage:"""
 
         return combined
 
+    def _detect_summarization_query(self, query: str) -> bool:
+        """Detect if query is asking for a summary or overview"""
+        summarization_keywords = [
+            'summarize', 'summary', 'summarise', 'overview', 'abstract',
+            'main points', 'key points', 'tldr', 'recap', 'brief',
+            'describe the paper', 'what does the paper say',
+            'what is the paper about', 'what does this paper',
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in summarization_keywords)
+
     def _generate_answer(self, query: str, context: str, hypothetical: str) -> str:
-        """Generate final answer using retrieved context"""
-        prompt = f"""Answer the following question using the provided context.
+        """Generate final answer using retrieved context with query-type-aware prompts"""
+
+        if self._detect_summarization_query(query):
+            prompt = f"""You are summarizing a document based on the provided context.
+Synthesize the information from ALL provided documents into a coherent, comprehensive summary.
+Cover the main contributions, methodology, key findings, and conclusions.
+Use the format [Document X] when referencing specific information.
+Do NOT say you cannot summarize - work with the context provided.
+
+Context from retrieved documents:
+{context}
+
+Request: {query}
+
+Summary (with citations):"""
+        else:
+            prompt = f"""Answer the following question using the provided context.
 Be accurate and cite information from the context when relevant.
 If the context doesn't contain the answer, say so.
 
@@ -399,9 +425,11 @@ Answer:"""
 
         context = ""
         if combined_docs:
+            is_summarization = self._detect_summarization_query(question)
+            max_chars = 2000 if is_summarization else 1000
             context = "\n\n".join([
-                f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}, via {doc.metadata.get('retrieval_method', 'unknown')}): {doc.page_content[:800]}"
-                for i, doc in enumerate(combined_docs[:7])
+                f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}, via {doc.metadata.get('retrieval_method', 'unknown')}): {doc.page_content[:max_chars]}"
+                for i, doc in enumerate(combined_docs)
             ])
         else:
             if self.verbose:

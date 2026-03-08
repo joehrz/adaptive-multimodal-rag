@@ -29,20 +29,16 @@ def test_llm_config_validation():
     # Invalid temperature (too high)
     try:
         LLMConfig(temperature=3.0)
-        print("  Invalid temperature (3.0): FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid temperature (3.0): PASS - {e}")
+        assert False, "Should have raised ConfigValidationError for temperature=3.0"
+    except ConfigValidationError:
+        pass
 
     # Invalid max_tokens
     try:
         LLMConfig(max_tokens=0)
-        print("  Invalid max_tokens (0): FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid max_tokens (0): PASS - {e}")
-
-    return True
+        assert False, "Should have raised ConfigValidationError for max_tokens=0"
+    except ConfigValidationError:
+        pass
 
 
 def test_documents_config_validation():
@@ -56,12 +52,9 @@ def test_documents_config_validation():
     # Invalid: overlap >= chunk_size
     try:
         DocumentsConfig(chunk_size=100, chunk_overlap=100)
-        print("  Invalid overlap >= chunk_size: FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid overlap >= chunk_size: PASS - {e}")
-
-    return True
+        assert False, "Should have raised ConfigValidationError for overlap >= chunk_size"
+    except ConfigValidationError:
+        pass
 
 
 def test_strategies_config_validation():
@@ -75,12 +68,9 @@ def test_strategies_config_validation():
     # Invalid: simple_max >= medium_max
     try:
         StrategiesConfig(simple_max=7, medium_max=7, complex_min=8)
-        print("  Invalid simple_max >= medium_max: FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid simple_max >= medium_max: PASS - {e}")
-
-    return True
+        assert False, "Should have raised ConfigValidationError for simple_max >= medium_max"
+    except ConfigValidationError:
+        pass
 
 
 def test_self_rag_config_validation():
@@ -94,12 +84,9 @@ def test_self_rag_config_validation():
     # Invalid quality_threshold > 1
     try:
         SelfRAGConfig(quality_threshold=1.5)
-        print("  Invalid quality_threshold (1.5): FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid quality_threshold (1.5): PASS - {e}")
-
-    return True
+        assert False, "Should have raised ConfigValidationError for quality_threshold=1.5"
+    except ConfigValidationError:
+        pass
 
 
 def test_cache_config_validation():
@@ -113,49 +100,11 @@ def test_cache_config_validation():
     # Invalid ttl_seconds
     try:
         CacheConfig(ttl_seconds=-1)
-        print("  Invalid ttl_seconds (-1): FAIL - should have raised error")
-        return False
-    except ConfigValidationError as e:
-        print(f"  Invalid ttl_seconds (-1): PASS - {e}")
-
-    return True
-
-
-def run_all_tests():
-    """Run all config validation tests"""
-    print("=" * 70)
-    print("CONFIG VALIDATION TESTS")
-    print("=" * 70)
-
-    results = []
-
-    results.append(("LLMConfig", test_llm_config_validation()))
-    results.append(("DocumentsConfig", test_documents_config_validation()))
-    results.append(("StrategiesConfig", test_strategies_config_validation()))
-    results.append(("SelfRAGConfig", test_self_rag_config_validation()))
-    results.append(("CacheConfig", test_cache_config_validation()))
-
-    print("\n" + "=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
-
-    all_passed = True
-    for name, passed in results:
-        status = "PASS" if passed else "FAIL"
-        print(f"  {name}: {status}")
-        if not passed:
-            all_passed = False
-
-    print("\n" + "=" * 70)
-    if all_passed:
-        print("ALL TESTS PASSED!")
-    else:
-        print("SOME TESTS FAILED")
-    print("=" * 70)
-
-    return all_passed
+        assert False, "Should have raised ConfigValidationError for ttl_seconds=-1"
+    except ConfigValidationError:
+        pass
 
 
 if __name__ == "__main__":
-    success = run_all_tests()
-    sys.exit(0 if success else 1)
+    import pytest
+    sys.exit(pytest.main([__file__, "-v"]))

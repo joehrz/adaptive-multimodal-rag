@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    depends_on:
+      - ollama
+    volumes:
+      - ./data:/app/data
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - RAG_OLLAMA_URL=http://ollama:11434
+    networks:
+      - rag-network
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - rag-network
+    # Uncomment the following block to enable GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  ollama-models:

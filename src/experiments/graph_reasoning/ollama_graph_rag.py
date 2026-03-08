@@ -224,11 +224,15 @@ ENTITY: [name] | TYPE: [type] | DESCRIPTION: [brief description]
 
 Extract 3-{self.max_entities_per_doc} key entities:"""
 
-        response = ollama.generate(
-            model=self.model,
-            prompt=prompt,
-            options={'temperature': 0.2, 'num_predict': 500}
-        )
+        try:
+            response = ollama.generate(
+                model=self.model,
+                prompt=prompt,
+                options={'temperature': 0.2, 'num_predict': 500}
+            )
+        except Exception as e:
+            logger.warning(f"Entity extraction LLM call failed: {e}")
+            return []
 
         entities = []
         doc_source = document.metadata.get('source', 'unknown')
@@ -278,11 +282,15 @@ RELATION: [source] -> [type] -> [target] | [description]
 
 Identify 2-{self.max_relationships_per_doc} key relationships:"""
 
-        response = ollama.generate(
-            model=self.model,
-            prompt=prompt,
-            options={'temperature': 0.2, 'num_predict': 400}
-        )
+        try:
+            response = ollama.generate(
+                model=self.model,
+                prompt=prompt,
+                options={'temperature': 0.2, 'num_predict': 400}
+            )
+        except Exception as e:
+            logger.warning(f"Relationship extraction LLM call failed: {e}")
+            return []
 
         relationships = []
         # Build entity map with normalized keys and also track original names for fuzzy matching

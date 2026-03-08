@@ -567,15 +567,27 @@ REASONING: [brief explanation]"""
                             utility, utility_reasoning = UtilityToken.SOMEWHAT_USEFUL, f"Error: {e}"
         else:
             # Sequential execution (original behavior)
-            relevance, relevance_reasoning = self._assess_relevance(query, documents)
+            try:
+                relevance, relevance_reasoning = self._assess_relevance(query, documents)
+            except Exception as e:
+                logger.error(f"  Relevance assessment failed: {e}")
+                relevance, relevance_reasoning = RelevanceToken.PARTIALLY_RELEVANT, f"Error: {e}"
             if self.verbose:
                 logger.info(f"  Relevance: {relevance.value}")
 
-            support, support_reasoning = self._assess_support(answer, documents)
+            try:
+                support, support_reasoning = self._assess_support(answer, documents)
+            except Exception as e:
+                logger.error(f"  Support assessment failed: {e}")
+                support, support_reasoning = SupportToken.PARTIALLY_SUPPORTED, f"Error: {e}"
             if self.verbose:
                 logger.info(f"  Support: {support.value}")
 
-            utility, utility_reasoning = self._assess_utility(query, answer)
+            try:
+                utility, utility_reasoning = self._assess_utility(query, answer)
+            except Exception as e:
+                logger.error(f"  Utility assessment failed: {e}")
+                utility, utility_reasoning = UtilityToken.SOMEWHAT_USEFUL, f"Error: {e}"
             if self.verbose:
                 logger.info(f"  Utility: {utility.value}")
 

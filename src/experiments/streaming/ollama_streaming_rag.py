@@ -164,55 +164,71 @@ class OllamaStreamingRAG:
             full_response = ""
             token_count = 0
 
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        data = json.loads(line)
+            try:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
 
-                        if "response" in data:
-                            token = data["response"]
-                            full_response += token
-                            token_count += 1
+                            if "response" in data:
+                                token = data["response"]
+                                full_response += token
+                                token_count += 1
 
-                            # Call token callback
-                            if on_token:
-                                on_token(token)
+                                # Call token callback
+                                if on_token:
+                                    on_token(token)
 
-                            # Yield chunk
-                            chunk = StreamChunk(
-                                stage=StreamingStage.GENERATING_ANSWER,
-                                content=token,
-                                metadata={
-                                    "token_count": token_count,
-                                    "done": data.get("done", False)
-                                },
-                                timestamp=time.time()
-                            )
-                            yield chunk
-
-                            # Progress update every 10 tokens
-                            if on_progress and token_count % 10 == 0:
-                                on_progress(StreamingProgress(
+                                # Yield chunk
+                                chunk = StreamChunk(
                                     stage=StreamingStage.GENERATING_ANSWER,
-                                    progress=0.5, # Indeterminate
-                                    message=f"Generated {token_count} tokens...",
+                                    content=token,
+                                    metadata={
+                                        "token_count": token_count,
+                                        "done": data.get("done", False)
+                                    },
                                     timestamp=time.time()
-                                ))
+                                )
+                                yield chunk
 
-                        if data.get("done", False):
-                            if on_progress:
-                                on_progress(StreamingProgress(
-                                    stage=StreamingStage.COMPLETE,
-                                    progress=1.0,
-                                    message=f"Complete! Generated {token_count} tokens",
-                                    timestamp=time.time()
-                                ))
-                            break
+                                # Progress update every 10 tokens
+                                if on_progress and token_count % 10 == 0:
+                                    on_progress(StreamingProgress(
+                                        stage=StreamingStage.GENERATING_ANSWER,
+                                        progress=0.5, # Indeterminate
+                                        message=f"Generated {token_count} tokens...",
+                                        timestamp=time.time()
+                                    ))
 
-                    except json.JSONDecodeError:
-                        continue
+                            if data.get("done", False):
+                                if on_progress:
+                                    on_progress(StreamingProgress(
+                                        stage=StreamingStage.COMPLETE,
+                                        progress=1.0,
+                                        message=f"Complete! Generated {token_count} tokens",
+                                        timestamp=time.time()
+                                    ))
+                                break
 
-        except requests.RequestException as e:
+                        except json.JSONDecodeError:
+                            continue
+            except (ConnectionError, ConnectionResetError, requests.exceptions.ChunkedEncodingError) as e:
+                logger.warning(f"Stream disconnected after {token_count} tokens: {e}")
+                if on_progress:
+                    on_progress(StreamingProgress(
+                        stage=StreamingStage.COMPLETE,
+                        progress=1.0,
+                        message=f"Stream interrupted after {token_count} tokens (partial response returned)",
+                        timestamp=time.time()
+                    ))
+                yield StreamChunk(
+                    stage=StreamingStage.COMPLETE,
+                    content="",
+                    metadata={"error": f"Stream disconnected: {e}", "partial_response": full_response, "token_count": token_count},
+                    timestamp=time.time()
+                )
+
+        except (requests.RequestException, requests.exceptions.Timeout) as e:
             error_msg = f"Streaming error: {str(e)}"
             logger.error(error_msg)
 

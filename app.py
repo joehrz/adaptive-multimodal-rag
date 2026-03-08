@@ -151,6 +151,10 @@ if 'debug_logger' not in st.session_state:
     st.session_state.debug_logger = None
 if 'debug_enabled' not in st.session_state:
     st.session_state.debug_enabled = True
+if 'show_groundedness' not in st.session_state:
+    st.session_state.show_groundedness = True
+if 'show_retrieved_chunks' not in st.session_state:
+    st.session_state.show_retrieved_chunks = True
 
 
 def get_available_models() -> list:
@@ -275,6 +279,79 @@ def get_strategy_badge(strategy: str) -> str:
     return f'<span class="strategy-badge {badge_class}">{strategy.upper()}</span>'
 
 
+def _retrieve_context_docs(query: str) -> List[Document]:
+    """Retrieve documents used as context for the query"""
+    try:
+        if hasattr(st.session_state.base_rag, 'vector_store') and st.session_state.base_rag.vector_store:
+            return st.session_state.base_rag.retrieve_documents(query, k=10)
+    except Exception:
+        pass
+    return []
+
+
+def _display_retrieved_chunks(retrieved_docs: List[Document]):
+    """Display retrieved document chunks in an expander"""
+    if not retrieved_docs:
+        return
+
+    with st.expander(f"Retrieved Context ({len(retrieved_docs)} chunks)", expanded=False):
+        st.caption("These are the actual document chunks retrieved from your uploaded files and fed to the LLM as context.")
+        for i, doc in enumerate(retrieved_docs):
+            source = doc.metadata.get('source', 'Unknown')
+            page = doc.metadata.get('page', '')
+            page_str = f" | Page {page}" if page else ""
+            content_preview = doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content
+            st.markdown(f"**Chunk {i+1}** — `{source}{page_str}`")
+            st.text_area(
+                f"chunk_{i+1}",
+                content_preview,
+                height=100,
+                disabled=True,
+                label_visibility="collapsed"
+            )
+
+
+def _run_groundedness_check(query: str, response: str, retrieved_docs: List[Document]):
+    """Run a lightweight groundedness check comparing RAG vs no-retrieval answers"""
+    if not retrieved_docs:
+        return
+
+    with st.expander("Groundedness Check", expanded=False):
+        st.caption("Compares the RAG answer against an answer generated without document context to verify retrieval is being used.")
+
+        with st.spinner("Generating LLM-only answer for comparison..."):
+            llm_only_answer = st.session_state.base_rag._generate_response(query, context="", require_citations=False)
+
+        # Calculate word overlap
+        words_rag = set(response.lower().split())
+        words_llm = set(llm_only_answer.lower().split())
+        overlap = len(words_rag & words_llm) / max(len(words_rag | words_llm), 1)
+
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            st.markdown("**RAG Answer** (with documents)")
+            st.text_area("rag_answer", response[:500] + "..." if len(response) > 500 else response, height=150, disabled=True, label_visibility="collapsed")
+        with col2:
+            st.markdown("**LLM-Only Answer** (no documents)")
+            st.text_area("llm_answer", llm_only_answer[:500] + "..." if len(llm_only_answer) > 500 else llm_only_answer, height=150, disabled=True, label_visibility="collapsed")
+        with col3:
+            st.markdown("**Overlap**")
+            st.metric("Word Overlap", f"{overlap:.0%}")
+            if overlap > 0.8:
+                st.error("HIGH — LLM may be using training data")
+            elif overlap > 0.5:
+                st.warning("MEDIUM — Partial reliance on training data")
+            else:
+                st.success("LOW — RAG is providing unique info")
+
+        # Check for document citations
+        has_citations = "[Document" in response or "[Doc" in response
+        if has_citations:
+            st.success("Answer contains document citations — good sign RAG is grounding the response")
+        else:
+            st.info("No explicit citations found. Consider if the answer references specific details only found in your documents.")
+
+
 def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]):
     """Stream response with progress updates"""
     response_placeholder = st.empty()
@@ -293,23 +370,6 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
     }
 
     try:
-        with debug_placeholder.expander("Debug: Query Processing", expanded=False):
-            st.write(f"**Query:** {query}")
-            st.write(f"**Strategy:** {strategy.value}")
-            st.write(f"**Total documents available:** {len(documents)}")
-
-            try:
-                if hasattr(st.session_state.base_rag, 'vector_store') and st.session_state.base_rag.vector_store:
-                    retrieved_docs = st.session_state.base_rag.retrieve_documents(query, k=5)
-                    st.write(f"**Retrieved {len(retrieved_docs)} documents for this query:**")
-                    for i, doc in enumerate(retrieved_docs):
-                        source = doc.metadata.get('source', 'Unknown')
-                        doc_type = doc.metadata.get('type', 'Unknown')
-                        content_preview = doc.page_content[:150] + "..." if len(doc.page_content) > 150 else doc.page_content
-                        st.text_area(f"Retrieved Doc {i+1}: {source} ({doc_type})", content_preview, height=80, disabled=True)
-            except Exception as debug_e:
-                st.write(f"Could not retrieve debug info: {debug_e}")
-
         # Handle different strategies
         if strategy == RAGStrategy.BASELINE:
             progress_placeholder.info(stages["generating"])
@@ -465,6 +525,13 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
         progress_placeholder.empty()
         response_placeholder.markdown(full_response)
 
+        # Show retrieved chunks and groundedness check for transparency
+        retrieved_docs = _retrieve_context_docs(query)
+        if st.session_state.get('show_retrieved_chunks', True):
+            _display_retrieved_chunks(retrieved_docs)
+        if st.session_state.get('show_groundedness', True):
+            _run_groundedness_check(query, full_response, retrieved_docs)
+
         return full_response
 
     except Exception as e:
@@ -527,6 +594,19 @@ def main():
         manual_strategy = None
         if strategy_mode == "Verification Mode":
             st.info("**Verification Mode**: Compares answers WITH and WITHOUT document retrieval to verify RAG is working correctly.")
+
+        st.markdown("---")
+
+        st.session_state.show_groundedness = st.checkbox(
+            "Show Groundedness Check",
+            value=st.session_state.get('show_groundedness', True),
+            help="Compare RAG answer vs LLM-only answer after each query to verify documents are being used. Adds ~5-10s per query."
+        )
+        st.session_state.show_retrieved_chunks = st.checkbox(
+            "Show Retrieved Chunks",
+            value=st.session_state.get('show_retrieved_chunks', True),
+            help="Display the actual document chunks retrieved and fed to the LLM as context."
+        )
 
         if strategy_mode == "Manual":
             strategy_options = ["Baseline RAG", "HyDE RAG", "HyDE + Self-RAG"]
@@ -910,13 +990,16 @@ def main():
                             st.success(note)
 
                     if verification["retrieved_docs"]:
-                        st.markdown("**Retrieved Document Previews:**")
-                        for i, doc in enumerate(verification["retrieved_docs"][:3]):
+                        st.markdown(f"**Retrieved Document Chunks ({len(verification['retrieved_docs'])}):**")
+                        for i, doc in enumerate(verification["retrieved_docs"]):
+                            page_str = f" | Page {doc['page']}" if doc.get('page') else ""
+                            st.markdown(f"**Chunk {i+1}** — `{doc['source']}{page_str}` ({doc['full_length']} chars)")
                             st.text_area(
-                                f"Doc {i+1}: {doc['source']}",
+                                f"verify_doc_{i+1}",
                                 doc["content_preview"],
                                 height=100,
-                                disabled=True
+                                disabled=True,
+                                label_visibility="collapsed"
                             )
 
                 response = verification["answer_with_retrieval"]

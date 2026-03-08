@@ -298,13 +298,83 @@ class OllamaRAG:
 
         return unique_docs
 
+    def _detect_metadata_query(self, query: str) -> bool:
+        """Detect if query is asking about document metadata (title, authors, date, etc.)"""
+        metadata_keywords = [
+            'title of', 'paper title', 'what is the title',
+            'who wrote', 'who are the authors', 'authors of',
+            'when was .* published', 'publication date', 'year of publication',
+            'which journal', 'which conference', 'where was .* published',
+        ]
+        query_lower = query.lower()
+        return any(kw in query_lower for kw in metadata_keywords)
+
+    def _retrieve_first_pages(self, num_pages: int = 2) -> List[Document]:
+        """Retrieve chunks from the first pages of uploaded documents (for metadata queries)"""
+        first_page_docs = []
+
+        # Search stored documents directly for first-page content
+        for doc in self.documents:
+            page = doc.metadata.get('page')
+            if page is not None and page <= num_pages:
+                first_page_docs.append(doc)
+
+        if first_page_docs:
+            if self.verbose:
+                logger.info(f"[METADATA] Found {len(first_page_docs)} chunks from first {num_pages} pages")
+            return self._deduplicate_documents(first_page_docs)
+
+        # Fallback: if no page metadata, search vector store for abstract/introduction
+        if self.vector_store:
+            try:
+                first_page_docs = self.vector_store.similarity_search(
+                    "abstract introduction title authors",
+                    k=5
+                )
+            except Exception:
+                pass
+
+        return self._deduplicate_documents(first_page_docs)
+
+    def _keyword_search(self, query: str, k: int = 5) -> List[Document]:
+        """Supplement semantic search with keyword-based retrieval from stored documents"""
+        if not self.documents:
+            return []
+
+        query_terms = [w.lower() for w in query.split() if len(w) > 3]
+        if not query_terms:
+            return []
+
+        scored_chunks = []
+        for doc in self.documents:
+            content_lower = doc.page_content.lower()
+            # Count how many query terms appear in this document
+            matches = sum(1 for term in query_terms if term in content_lower)
+            if matches > 0:
+                scored_chunks.append((matches, doc))
+
+        # Sort by match count descending
+        scored_chunks.sort(key=lambda x: x[0], reverse=True)
+        return [doc for _, doc in scored_chunks[:k]]
+
     def _retrieve_documents(self, query: str) -> List[Document]:
-        """Retrieve relevant documents with caching, deduplication, and smart page detection"""
+        """Retrieve relevant documents with caching, deduplication, and smart query detection"""
 
         if not self.vector_store:
             if self.verbose:
                 logger.warning("No documents in vector store - retrieval will return empty results")
             return []
+
+        # Check for metadata queries (title, authors, etc.) - retrieve first pages
+        if self._detect_metadata_query(query):
+            if self.verbose:
+                logger.info(f"[METADATA QUERY] Retrieving first pages for metadata question")
+            first_pages = self._retrieve_first_pages()
+            if first_pages:
+                # Also do semantic search and merge
+                semantic_docs = self.vector_store.similarity_search(query, k=self.k_retrieval)
+                all_docs = first_pages + semantic_docs
+                return self._deduplicate_documents(all_docs)[:self.k_retrieval]
 
         # Check if this is a page-specific query
         page_num = self._detect_page_query(query)
@@ -337,10 +407,10 @@ class OllamaRAG:
             if cached_results:
                 if self.verbose:
                     logger.info(f"[CACHE HIT] Retrieved {len(cached_results)} documents from cache")
-                # Reconstruct documents from cache (simplified - just content)
+                # Reconstruct documents from cache
                 docs = []
                 for doc_content, score in cached_results:
-                    docs.append(Document(page_content=doc_content, metadata={"score": score}))
+                    docs.append(Document(page_content=doc_content, metadata={"score": score, "source": "cached"}))
                 return docs
 
         # Cache miss - perform actual search
@@ -349,7 +419,14 @@ class OllamaRAG:
         raw_docs = self.vector_store.similarity_search(query, k=raw_k)
 
         if self.verbose:
-            logger.info(f"[RETRIEVAL] Raw retrieval returned {len(raw_docs)} documents")
+            logger.info(f"[RETRIEVAL] Semantic search returned {len(raw_docs)} documents")
+
+        # Supplement with keyword-based retrieval to catch chunks semantic search misses
+        keyword_docs = self._keyword_search(query, k=self.k_retrieval)
+        if keyword_docs:
+            raw_docs = raw_docs + keyword_docs
+            if self.verbose:
+                logger.info(f"[RETRIEVAL] Keyword search added {len(keyword_docs)} supplemental documents")
 
         # Deduplicate results
         docs = self._deduplicate_documents(raw_docs)
@@ -358,8 +435,7 @@ class OllamaRAG:
         docs = docs[:self.k_retrieval]
 
         if self.verbose:
-            duplicate_count = len(raw_docs) - len(self._deduplicate_documents(raw_docs))
-            logger.info(f"[DEDUP] Removed {duplicate_count} duplicates, returning {len(docs)} unique documents")
+            logger.info(f"[DEDUP] Returning {len(docs)} unique documents after deduplication")
 
         # Cache the deduplicated results
         if self.cache_manager and docs:
@@ -391,15 +467,41 @@ class OllamaRAG:
         finally:
             self.k_retrieval = original_k
 
+    def _detect_summarization_query(self, query: str) -> bool:
+        """Detect if query is asking for a summary or overview"""
+        summarization_keywords = [
+            'summarize', 'summary', 'summarise', 'overview', 'abstract',
+            'main points', 'key points', 'tldr', 'recap', 'brief',
+            'describe the paper', 'what does the paper say',
+            'what is the paper about', 'what does this paper',
+        ]
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in summarization_keywords)
+
     def _generate_response(self, query: str, context: str = "", require_citations: bool = True) -> str:
-        """Generate response using Ollama"""
+        """Generate response using Ollama with query-type-aware prompts"""
 
         if context:
-            if require_citations:
-                prompt = f"""Answer the following question using ONLY the provided context.
+            is_summarization = self._detect_summarization_query(query)
+
+            if is_summarization:
+                prompt = f"""You are summarizing a document based on the provided context.
+Synthesize the information from ALL provided documents into a coherent, comprehensive summary.
+Cover the main contributions, methodology, key findings, and conclusions.
+Use the format [Document X] when referencing specific information.
+Do NOT say you cannot summarize - work with the context provided.
+
+Context:
+{context}
+
+Request: {query}
+
+Summary (with citations):"""
+            elif require_citations:
+                prompt = f"""Answer the following question using the provided context.
 IMPORTANT: You must cite specific information from the documents. Use the format [Document X] when referencing information.
-If the answer is not found in the context, say "I cannot find this information in the provided documents."
-Do NOT use your general knowledge - only use the provided context.
+Base your answer on the provided context. If the context contains relevant information, synthesize it into a clear answer.
+Only say you cannot find the information if the context is truly unrelated to the question.
 
 Context:
 {context}
@@ -423,37 +525,48 @@ Question: {query}
 
 Answer:"""
 
-        try:
-            if self.verbose:
-                logger.info(f"Generating response with {self.model}...")
+        max_retries = 3
+        last_error = None
 
-            start_time = time.time()
+        for attempt in range(max_retries):
+            try:
+                if self.verbose:
+                    if attempt > 0:
+                        logger.info(f"Retry attempt {attempt + 1}/{max_retries}...")
+                    else:
+                        logger.info(f"Generating response with {self.model}...")
 
-            # Note: timeout is not a valid Ollama option - it's handled at the client level
-            # The ollama package uses httpx with default timeouts
-            response = ollama.generate(
-                model=self.model,
-                prompt=prompt,
-                options={
-                    'temperature': self.temperature,
-                    'num_predict': self.max_tokens,
-                    'stop': ['Question:', 'Context:']
-                }
-            )
+                start_time = time.time()
 
-            generation_time = time.time() - start_time
+                response = ollama.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    options={
+                        'temperature': self.temperature,
+                        'num_predict': self.max_tokens,
+                        'stop': ['Question:', 'Context:']
+                    }
+                )
 
-            answer = response['response'].strip()
+                generation_time = time.time() - start_time
 
-            if self.verbose:
-                logger.info(f"Response generated in {generation_time:.1f}s, tokens: {response.get('eval_count', 'N/A')}")
+                answer = response['response'].strip()
 
-            return answer
+                if self.verbose:
+                    logger.info(f"Response generated in {generation_time:.1f}s, tokens: {response.get('eval_count', 'N/A')}")
 
-        except Exception as e:
-            error_msg = f"Error generating response: {e}"
-            logger.error(error_msg)
-            return error_msg
+                return answer
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # 1s, 2s, 4s
+                    logger.warning(f"Ollama API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    error_msg = f"Error generating response after {max_retries} attempts: {last_error}"
+                    logger.error(error_msg)
+                    return error_msg
 
     def query(self, question: str, use_retrieval: bool = True, bypass_cache: bool = False) -> str:
         """
@@ -481,20 +594,31 @@ Answer:"""
 
         context = ""
         docs = []
+        is_summarization = self._detect_summarization_query(question)
 
         if use_retrieval:
-            # Retrieve relevant documents
-            docs = self._retrieve_documents(question)
+            # Retrieve relevant documents (more for summarization)
+            if is_summarization:
+                docs = self._retrieve_documents(question)
+                # For summarization, also retrieve with broader queries to get better coverage
+                intro_docs = self._retrieve_documents("introduction background motivation")
+                conclusion_docs = self._retrieve_documents("conclusion results findings contributions")
+                # Merge and deduplicate
+                all_docs = docs + intro_docs + conclusion_docs
+                docs = self._deduplicate_documents(all_docs)[:self.k_retrieval * 2]
+            else:
+                docs = self._retrieve_documents(question)
 
             if docs:
-                # Combine document contents as context
+                # Use all retrieved docs, with more content per doc for summarization
+                max_chars_per_doc = 2000 if is_summarization else 1000
                 context = "\n\n".join([
-                    f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}): {doc.page_content[:1000]}..."
-                    for i, doc in enumerate(docs[:5])
+                    f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}): {doc.page_content[:max_chars_per_doc]}"
+                    for i, doc in enumerate(docs)
                 ])
 
                 if self.verbose:
-                    logger.info(f"Using {len(docs)} documents as context")
+                    logger.info(f"Using {len(docs)} documents as context ({len(context)} chars)")
             else:
                 if self.verbose:
                     logger.warning("No relevant documents found, using direct generation")
@@ -533,23 +657,41 @@ Answer:"""
         if self.verbose:
             logger.info(f"RAG VERIFICATION MODE: {question[:60]}...")
 
-        # Step 1: Get answer WITH retrieval (normal RAG)
+        # Step 1: Get answer WITH retrieval (bypass cache for fresh results)
+        is_summarization = self._detect_summarization_query(question)
+
+        # Bypass search cache for verification to ensure fresh retrieval
+        original_cache = self.cache_manager
+        self.cache_manager = None
+
         docs = self._retrieve_documents(question)
+
+        # For summarization, also retrieve intro/conclusion chunks for broader coverage
+        if is_summarization:
+            intro_docs = self._retrieve_documents("introduction background motivation")
+            conclusion_docs = self._retrieve_documents("conclusion results findings contributions")
+            all_docs = docs + intro_docs + conclusion_docs
+            docs = self._deduplicate_documents(all_docs)[:self.k_retrieval * 2]
+
+        self.cache_manager = original_cache
+
         context = ""
         retrieved_docs = []
 
         if docs:
+            max_chars = 2000 if is_summarization else 1000
             context = "\n\n".join([
-                f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}): {doc.page_content[:1000]}..."
-                for i, doc in enumerate(docs[:5])
+                f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}): {doc.page_content[:max_chars]}"
+                for i, doc in enumerate(docs)
             ])
             retrieved_docs = [
                 {
                     "source": doc.metadata.get('source', 'Unknown'),
+                    "page": doc.metadata.get('page', ''),
                     "content_preview": doc.page_content[:500],
                     "full_length": len(doc.page_content)
                 }
-                for doc in docs[:5]
+                for doc in docs
             ]
 
         answer_with_retrieval = self._generate_response(question, context, require_citations=True)

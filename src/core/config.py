@@ -230,6 +230,8 @@ def _apply_env_overrides(config_dict: Dict) -> Dict:
         'RAG_CACHE_ENABLED': 'cache.enabled',
         'RAG_LOG_LEVEL': 'logging.level',
         'RAG_VERBOSE': 'logging.verbose',
+        'RAG_OLLAMA_URL': 'ollama.url',
+        'RAG_OLLAMA_TIMEOUT': 'ollama.timeout',
     }
 
     for env_var, config_path in env_mappings.items():

@@ -266,6 +266,12 @@ Reasoning: [explanation]"""
         score = 5  # Default
         reasoning = result
 
+        # Word-to-number mapping for non-numeric LLM responses
+        word_to_num = {
+            'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4,
+            'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+        }
+
         try:
             lines = result.strip().split('\n')
             for line in lines:
@@ -275,6 +281,15 @@ Reasoning: [explanation]"""
                     if match:
                         score = int(match.group(1))
                         score = max(0, min(10, score))  # Clamp to 0-10
+                    else:
+                        # Fallback: try word-to-number conversion
+                        line_lower = line.lower()
+                        for word, num in word_to_num.items():
+                            if word in line_lower:
+                                score = num
+                                break
+                        else:
+                            logger.warning(f"Could not extract numeric score from: {line.strip()}")
                 elif 'reasoning:' in line.lower():
                     reasoning = line.split(':', 1)[1].strip()
         except Exception as e:
