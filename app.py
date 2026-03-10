@@ -546,7 +546,7 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
 def main():
     # Header
     st.markdown('<div class="main-header">Adaptive Multimodal RAG</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Intelligent Question Answering with State-of-the-Art Techniques</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Adaptive Query Routing for Document Question Answering</div>', unsafe_allow_html=True)
 
     # Initialize system
     if not initialize_system():

@@ -36,6 +36,13 @@ try:
 except ImportError:
     CONFIG_AVAILABLE = False
 
+# Import cross-encoder reranker
+try:
+    from sentence_transformers import CrossEncoder
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
+
 if TYPE_CHECKING:
     from src.core.config import Config
 
@@ -62,6 +69,8 @@ class OllamaRAG:
         persist_directory: Optional[str] = None,
         config: Optional['Config'] = None,
         timeout: Optional[int] = None,
+        enable_reranker: Optional[bool] = None,
+        reranker_model: Optional[str] = None,
     ):
         """
         Initialize Ollama RAG system
@@ -104,6 +113,11 @@ class OllamaRAG:
             _chunk_size = chunk_size if chunk_size is not None else config.documents.chunk_size
             _chunk_overlap = chunk_overlap if chunk_overlap is not None else config.documents.chunk_overlap
             _enable_caching = enable_caching if enable_caching is not None else config.cache.enabled
+            _enable_reranker = enable_reranker if enable_reranker is not None else config.reranker.enabled
+            _reranker_model = reranker_model if reranker_model is not None else config.reranker.model
+            _reranker_device = config.reranker.device
+            self.reranker_top_k = config.reranker.top_k
+            self.reranker_candidates = config.reranker.candidates
         else:
             # Fallback to hardcoded defaults if no config available
             self.model = model or "qwen2.5:14b"
@@ -119,6 +133,11 @@ class OllamaRAG:
             _chunk_size = chunk_size or 1000
             _chunk_overlap = chunk_overlap or 200
             _enable_caching = enable_caching if enable_caching is not None else True
+            _enable_reranker = enable_reranker if enable_reranker is not None else True
+            _reranker_model = reranker_model or "cross-encoder/ms-marco-MiniLM-L-6-v2"
+            _reranker_device = "cpu"
+            self.reranker_top_k = 10
+            self.reranker_candidates = 30
 
         # Test Ollama connection
         try:
@@ -143,6 +162,23 @@ class OllamaRAG:
             model_name=_embedding_model,
             model_kwargs={'device': _embedding_device}
         )
+
+        # Initialize cross-encoder reranker
+        self.reranker = None
+        if _enable_reranker and RERANKER_AVAILABLE:
+            try:
+                self.reranker = CrossEncoder(
+                    _reranker_model,
+                    device=_reranker_device
+                )
+                if self.verbose:
+                    logger.info(f"Reranker: {_reranker_model} on {_reranker_device}")
+            except Exception as e:
+                logger.warning(f"Failed to load reranker: {e}. Continuing without reranking.")
+                self.reranker = None
+        elif _enable_reranker and not RERANKER_AVAILABLE:
+            if self.verbose:
+                logger.warning("Reranker requested but sentence-transformers not installed")
 
         # Initialize text splitter
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -357,6 +393,38 @@ class OllamaRAG:
         scored_chunks.sort(key=lambda x: x[0], reverse=True)
         return [doc for _, doc in scored_chunks[:k]]
 
+    def _rerank(self, query: str, documents: List[Document], top_k: int = 10) -> List[Document]:
+        """Rerank documents using cross-encoder model for more accurate relevance scoring."""
+        if not documents or not self.reranker:
+            return documents[:top_k]
+
+        # Build query-document pairs for the cross-encoder
+        pairs = [(query, doc.page_content[:512]) for doc in documents]
+
+        try:
+            scores = self.reranker.predict(pairs)
+
+            # Sort documents by cross-encoder score (descending)
+            scored_docs = sorted(
+                zip(scores, documents),
+                key=lambda x: x[0],
+                reverse=True
+            )
+
+            reranked = [doc for score, doc in scored_docs[:top_k]]
+
+            if self.verbose:
+                top_score = scored_docs[0][0] if scored_docs else 0
+                bottom_score = scored_docs[min(top_k - 1, len(scored_docs) - 1)][0] if scored_docs else 0
+                logger.info(f"[RERANK] Reranked {len(documents)} -> {len(reranked)} docs "
+                           f"(scores: {top_score:.3f} to {bottom_score:.3f})")
+
+            return reranked
+
+        except Exception as e:
+            logger.warning(f"Reranking failed: {e}. Falling back to original order.")
+            return documents[:top_k]
+
     def _retrieve_documents(self, query: str, bypass_cache: bool = False) -> List[Document]:
         """Retrieve relevant documents with caching, deduplication, and smart query detection"""
 
@@ -414,8 +482,11 @@ class OllamaRAG:
                 return docs
 
         # Cache miss - perform actual search
-        # Retrieve MORE documents than needed to account for duplicates, then deduplicate
-        raw_k = self.k_retrieval * 3  # Retrieve 3x to ensure we get enough unique docs
+        # When reranker is active, fetch more candidates for it to score
+        if self.reranker:
+            raw_k = max(self.reranker_candidates, self.k_retrieval * 3)
+        else:
+            raw_k = self.k_retrieval * 3
         raw_docs = self.vector_store.similarity_search(query, k=raw_k)
 
         if self.verbose:
@@ -431,11 +502,15 @@ class OllamaRAG:
         # Deduplicate results
         docs = self._deduplicate_documents(raw_docs)
 
-        # Trim to requested k
-        docs = docs[:self.k_retrieval]
+        # Rerank with cross-encoder if available
+        if self.reranker and len(docs) > 1:
+            docs = self._rerank(query, docs, top_k=self.reranker_top_k)
+        else:
+            docs = docs[:self.k_retrieval]
 
         if self.verbose:
-            logger.info(f"[DEDUP] Returning {len(docs)} unique documents after deduplication")
+            logger.info(f"[RETRIEVAL] Returning {len(docs)} documents" +
+                        (" (reranked)" if self.reranker else " (after deduplication)"))
 
         # Cache the deduplicated results
         if self.cache_manager and docs:

@@ -1,33 +1,30 @@
 # Adaptive Multimodal RAG
 
-A research implementation exploring multiple RAG (Retrieval-Augmented Generation) techniques with adaptive query routing. This project investigates how different retrieval and generation strategies perform across varying query complexities, and whether automatic strategy selection can improve overall system performance.
+A research project exploring automatic RAG strategy selection based on query complexity. The system analyzes incoming queries, assigns a complexity score, and routes them to the most appropriate retrieval and generation strategy.
 
 ## Motivation
 
-Standard RAG systems use a fixed retrieval-generation pipeline regardless of query complexity. Simple factual questions get the same treatment as complex analytical queries. This project explores:
-
-1. **Can we classify query complexity automatically?**
-2. **Do different RAG techniques perform better for different query types?**
-3. **Can adaptive routing between techniques improve results?**
+Standard RAG systems use a fixed retrieval pipeline regardless of query complexity. Simple factual questions get the same treatment as complex analytical queries. This project explores whether automatic routing between different RAG techniques can improve results.
 
 ## Implemented Techniques
 
+### Baseline RAG
+Standard retrieve-then-generate pipeline using vector similarity search with cross-encoder reranking.
+
 ### HyDE (Hypothetical Document Embeddings)
-Based on [Gao et al., 2022](https://arxiv.org/abs/2212.10496). Instead of embedding the query directly, we first generate a hypothetical answer, then use that for retrieval. This bridges the semantic gap between questions and documents.
+Based on [Gao et al., 2022](https://arxiv.org/abs/2212.10496). Generates a hypothetical answer first, then uses it for retrieval. This bridges the semantic gap between questions and documents.
 
 ### Self-RAG with Reflection Tokens
-Based on [Asai et al., 2023](https://arxiv.org/abs/2310.11511). The system generates reflection tokens to assess:
-- **Relevance**: Are the retrieved documents relevant?
-- **Support**: Is the generated answer grounded in the documents?
-- **Utility**: Does the answer actually address the question?
-
-If quality is low, the system can regenerate.
+Based on [Asai et al., 2023](https://arxiv.org/abs/2310.11511). Generates reflection tokens to assess relevance, support, and utility of retrieved documents and generated answers. Regenerates if quality is low.
 
 ### GraphRAG
-Builds a knowledge graph from documents by extracting entities and relationships. For queries requiring multi-hop reasoning (e.g., "How does X relate to Y?"), the system traverses the graph to gather connected information before generating an answer.
+Based on [Edge et al., 2024](https://arxiv.org/abs/2404.16130). Builds a knowledge graph from documents by extracting entities and relationships. For multi-hop queries, traverses the graph to gather connected information before generating.
 
-### Baseline RAG
-Standard retrieve-then-generate pipeline using vector similarity search.
+### Cross-Encoder Reranking
+Uses a cross-encoder model (ms-marco-MiniLM-L-6-v2) to rerank retrieved documents by relevance. The initial retrieval fetches a larger candidate set, then the cross-encoder scores each query-document pair to select the most relevant chunks.
+
+### Multimodal Processing
+Uses LLaVA for vision-based question answering on images, figures, and charts extracted from documents.
 
 ## Query Routing
 
@@ -35,27 +32,30 @@ The router analyzes incoming queries and assigns a complexity score (0-10):
 
 | Score | Complexity | Strategy | Rationale |
 |-------|------------|----------|-----------|
-| 0-3 | Simple | Baseline | Direct factual lookups don't need sophisticated retrieval |
+| 0-3 | Simple | Baseline | Direct factual lookups |
 | 4-7 | Medium | HyDE | Explanatory queries benefit from hypothetical document generation |
-| 8-10 | Complex | HyDE + Self-RAG | Analytical queries need both better retrieval and quality checks |
-| - | Multi-hop | GraphRAG | Relationship queries need graph traversal |
-| - | Visual | Multimodal | Queries about images/tables need vision processing |
+| 8-10 | Complex | HyDE + Self-RAG | Analytical queries need better retrieval and quality checks |
+| 6+ | Multi-hop | GraphRAG | Relationship queries need graph traversal |
+| any | Visual | Multimodal | Queries about images, figures, or charts |
+
+Summarization queries (summary, overview, key findings, main contribution) are routed to HyDE regardless of complexity score, since they require document synthesis rather than direct lookup.
 
 ## Project Structure
 
 ```
 src/
 ├── core/
-│   ├── ollama_rag.py           # Base RAG implementation
-│   └── caching_system.py       # Query/embedding cache
+│   ├── ollama_rag.py           # Base RAG with cross-encoder reranking
+│   ├── config.py               # Configuration loading
+│   └── caching_system.py       # Query and embedding cache
 ├── experiments/
 │   ├── adaptive_routing/       # Query analysis and routing
 │   ├── self_reflection/        # Self-RAG implementation
 │   ├── graph_reasoning/        # GraphRAG implementation
 │   ├── streaming/              # Token streaming for UI
-│   └── multimodal/             # OCR + LLaVA processing
+│   └── multimodal/             # LLaVA vision processing
 └── ocr/
-    └── advanced_ocr_engine.py  # Multi-backend OCR
+    └── advanced_ocr_engine.py  # Multi-backend OCR (EasyOCR, Tesseract)
 ```
 
 ## Setup
@@ -81,62 +81,44 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen2.5:3b
 ```
 
+### Docker
+
+```bash
+docker compose up --build
+```
+
+The Docker setup runs both the Ollama server and the Streamlit app. Set `RAG_OLLAMA_URL` to override the Ollama endpoint.
+
 ### Running
 
 ```bash
 # Web interface
 streamlit run app.py
 
-# Or use the startup script
-./run_app.sh
+# CLI for testing and debugging
+python cli_query.py
 ```
 
-## Usage
+## Configuration
 
-### Web Interface
-The Streamlit app provides:
-- Document upload (PDF, TXT, MD)
-- Automatic or manual strategy selection
-- Streaming responses
-- Reflection token visualization (for Self-RAG)
-- Graph traversal display (for GraphRAG)
+Edit `config.yaml` to customize models, reranking, retrieval parameters, and routing thresholds. Key settings:
 
-### Python API
+- `llm.model`: Ollama model (default: qwen2.5:14b)
+- `reranker.enabled`: Toggle cross-encoder reranking (default: true)
+- `reranker.candidates`: Number of initial candidates before reranking (default: 30)
+- `reranker.top_k`: Number of documents kept after reranking (default: 10)
+- `documents.chunk_size`: Document chunk size in characters (default: 1000)
 
-```python
-from src.core.ollama_rag import OllamaRAG
-from src.experiments.self_reflection.ollama_self_rag import OllamaSelfRAG
-from src.experiments.graph_reasoning.ollama_graph_rag import OllamaGraphRAG
-
-# Basic RAG
-rag = OllamaRAG(model="qwen2.5:3b")
-rag.add_documents(documents)
-answer = rag.query("What is X?")
-
-# Self-RAG with reflection
-self_rag = OllamaSelfRAG(model="qwen2.5:3b")
-result = self_rag.query_with_reflection(query, documents)
-print(f"Answer: {result.answer}")
-print(f"Quality score: {result.reflection.overall_score}")
-
-# GraphRAG
-graph_rag = OllamaGraphRAG(model="qwen2.5:3b")
-graph_rag.build_graph_from_documents(documents)
-result = graph_rag.query("How does X relate to Y?")
-print(f"Reasoning path: {result.reasoning_path}")
-```
+Environment variables `RAG_OLLAMA_URL` and `RAG_OLLAMA_TIMEOUT` override the corresponding config values.
 
 ## Testing
 
 ```bash
-# Quick import test (no Ollama needed)
-python test_all_features.py --quick
+# Unit tests (no Ollama needed)
+pytest tests/
 
-# Full tests (requires Ollama running)
-python test_all_features.py
-
-# Test with a PDF
-python test_all_features.py --pdf /path/to/document.pdf
+# Integration tests against real PDFs (requires Ollama running)
+python tests/integration/run_quality_tests.py
 ```
 
 ## Models
@@ -145,15 +127,15 @@ Tested with:
 - **Language**: Qwen 2.5 (3B, 7B, 14B), Llama 3.1, Mistral
 - **Vision**: LLaVA 7B/13B (for multimodal)
 - **Embeddings**: all-MiniLM-L6-v2
+- **Reranker**: cross-encoder/ms-marco-MiniLM-L-6-v2
 
-Any Ollama-compatible model should work.
+Any Ollama-compatible model should work for language and vision.
 
 ## Limitations
 
 - Query complexity scoring is heuristic-based, not learned
 - GraphRAG entity extraction depends on LLM quality
 - Multimodal processing is slow (requires vision model inference)
-- No formal evaluation benchmarks yet
 
 ## References
 

@@ -44,6 +44,24 @@ class EmbeddingsConfig:
 
 
 @dataclass
+class RerankerConfig:
+    """Cross-encoder reranker configuration"""
+    enabled: bool = True
+    model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    device: str = "cpu"
+    top_k: int = 10
+    candidates: int = 30
+
+    def __post_init__(self):
+        if self.top_k <= 0:
+            raise ConfigValidationError(f"reranker top_k must be positive, got {self.top_k}")
+        if self.candidates <= 0:
+            raise ConfigValidationError(f"reranker candidates must be positive, got {self.candidates}")
+        if self.top_k > self.candidates:
+            raise ConfigValidationError(f"reranker top_k ({self.top_k}) must be <= candidates ({self.candidates})")
+
+
+@dataclass
 class DocumentsConfig:
     """Document processing configuration"""
     chunk_size: int = 1000
@@ -195,6 +213,7 @@ class Config:
     """Main configuration container"""
     llm: LLMConfig = field(default_factory=LLMConfig)
     embeddings: EmbeddingsConfig = field(default_factory=EmbeddingsConfig)
+    reranker: RerankerConfig = field(default_factory=RerankerConfig)
     documents: DocumentsConfig = field(default_factory=DocumentsConfig)
     vector_db: VectorDBConfig = field(default_factory=VectorDBConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -309,6 +328,13 @@ def load_config(config_path: Optional[str] = None) -> Config:
         embeddings=EmbeddingsConfig(
             model=_get_nested_value(config_dict, 'embeddings.model', 'all-MiniLM-L6-v2'),
             device=_get_nested_value(config_dict, 'embeddings.device', 'cpu'),
+        ),
+        reranker=RerankerConfig(
+            enabled=bool(_get_nested_value(config_dict, 'reranker.enabled', True)),
+            model=_get_nested_value(config_dict, 'reranker.model', 'cross-encoder/ms-marco-MiniLM-L-6-v2'),
+            device=_get_nested_value(config_dict, 'reranker.device', 'cpu'),
+            top_k=int(_get_nested_value(config_dict, 'reranker.top_k', 10)),
+            candidates=int(_get_nested_value(config_dict, 'reranker.candidates', 30)),
         ),
         documents=DocumentsConfig(
             chunk_size=int(_get_nested_value(config_dict, 'documents.chunk_size', 1000)),

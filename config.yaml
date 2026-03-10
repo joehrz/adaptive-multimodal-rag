@@ -17,6 +17,14 @@ ollama:
   url: "http://localhost:11434"  # Override with RAG_OLLAMA_URL env var for Docker
   timeout: 120                   # Request timeout in seconds
 
+# Reranking
+reranker:
+  enabled: true                                    # Enable cross-encoder reranking
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"   # Cross-encoder model for reranking
+  device: "cpu"                                    # Device for reranker (cpu, cuda)
+  top_k: 10                                        # Number of documents to keep after reranking
+  candidates: 30                                   # Number of candidates to retrieve before reranking
+
 # Document Processing
 documents:
   chunk_size: 1000      # Size of document chunks in characters

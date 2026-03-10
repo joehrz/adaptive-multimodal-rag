@@ -131,3 +131,12 @@ site/
 # pytest
 .pytest_cache/
 test-results/
+
+# Windows Zone.Identifier files
+*:Zone.Identifier
+
+# Debug logs
+debug_logs/
+
+# Integration test results (machine-specific)
+tests/integration/*_results*.json
