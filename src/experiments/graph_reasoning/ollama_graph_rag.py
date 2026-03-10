@@ -228,7 +228,7 @@ Extract 3-{self.max_entities_per_doc} key entities:"""
             response = ollama.generate(
                 model=self.model,
                 prompt=prompt,
-                options={'temperature': 0.2, 'num_predict': 500}
+                options={'temperature': 0.2, 'num_predict': 500},
             )
         except Exception as e:
             logger.warning(f"Entity extraction LLM call failed: {e}")
@@ -286,7 +286,7 @@ Identify 2-{self.max_relationships_per_doc} key relationships:"""
             response = ollama.generate(
                 model=self.model,
                 prompt=prompt,
-                options={'temperature': 0.2, 'num_predict': 400}
+                options={'temperature': 0.2, 'num_predict': 400},
             )
         except Exception as e:
             logger.warning(f"Relationship extraction LLM call failed: {e}")
@@ -405,7 +405,7 @@ Summary:"""
         response = ollama.generate(
             model=self.model,
             prompt=prompt,
-            options={'temperature': 0.3, 'num_predict': 100}
+            options={'temperature': 0.3, 'num_predict': 100},
         )
 
         return response['response'].strip()
@@ -524,7 +524,7 @@ List 1-5 relevant entity names, one per line:"""
         response = ollama.generate(
             model=self.model,
             prompt=prompt,
-            options={'temperature': 0.1, 'num_predict': 200}
+            options={'temperature': 0.1, 'num_predict': 200},
         )
 
         # Match entity names from response using normalized comparison
@@ -693,7 +693,7 @@ Based on the document content and knowledge graph information, provide a compreh
             options={
                 'temperature': self.temperature,
                 'num_predict': self.max_tokens
-            }
+            },
         )
 
         answer = response['response'].strip()

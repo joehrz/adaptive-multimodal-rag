@@ -238,7 +238,7 @@ class OllamaRAG:
                 continue
 
             # Create hash of full content for ingestion dedup
-            content_hash = hashlib.sha256(content.encode()).hexdigest()
+            content_hash = hashlib.sha256(content.lower().encode()).hexdigest()
 
             if content_hash not in seen_hashes:
                 seen_hashes.add(content_hash)
@@ -357,7 +357,7 @@ class OllamaRAG:
         scored_chunks.sort(key=lambda x: x[0], reverse=True)
         return [doc for _, doc in scored_chunks[:k]]
 
-    def _retrieve_documents(self, query: str) -> List[Document]:
+    def _retrieve_documents(self, query: str, bypass_cache: bool = False) -> List[Document]:
         """Retrieve relevant documents with caching, deduplication, and smart query detection"""
 
         if not self.vector_store:
@@ -402,7 +402,7 @@ class OllamaRAG:
                     logger.warning(f"[PAGE FILTER] Metadata filter failed: {e}, falling back to semantic search")
 
         # Check cache for search results
-        if self.cache_manager:
+        if self.cache_manager and not bypass_cache:
             cached_results = self.cache_manager.get_search_results(query, self.k_retrieval)
             if cached_results:
                 if self.verbose:
@@ -471,7 +471,9 @@ class OllamaRAG:
         """Detect if query is asking for a summary or overview"""
         summarization_keywords = [
             'summarize', 'summary', 'summarise', 'overview', 'abstract',
-            'main points', 'key points', 'tldr', 'recap', 'brief',
+            'main points', 'key points', 'key findings', 'key takeaways',
+            'main contribution', 'main contributions', 'main idea',
+            'tldr', 'recap', 'brief',
             'describe the paper', 'what does the paper say',
             'what is the paper about', 'what does this paper',
         ]
@@ -622,6 +624,7 @@ Answer:"""
             else:
                 if self.verbose:
                     logger.warning("No relevant documents found, using direct generation")
+                use_retrieval = False
 
         # Generate response
         answer = self._generate_response(question, context)
@@ -661,19 +664,14 @@ Answer:"""
         is_summarization = self._detect_summarization_query(question)
 
         # Bypass search cache for verification to ensure fresh retrieval
-        original_cache = self.cache_manager
-        self.cache_manager = None
-
-        docs = self._retrieve_documents(question)
+        docs = self._retrieve_documents(question, bypass_cache=True)
 
         # For summarization, also retrieve intro/conclusion chunks for broader coverage
         if is_summarization:
-            intro_docs = self._retrieve_documents("introduction background motivation")
-            conclusion_docs = self._retrieve_documents("conclusion results findings contributions")
+            intro_docs = self._retrieve_documents("introduction background motivation", bypass_cache=True)
+            conclusion_docs = self._retrieve_documents("conclusion results findings contributions", bypass_cache=True)
             all_docs = docs + intro_docs + conclusion_docs
             docs = self._deduplicate_documents(all_docs)[:self.k_retrieval * 2]
-
-        self.cache_manager = original_cache
 
         context = ""
         retrieved_docs = []

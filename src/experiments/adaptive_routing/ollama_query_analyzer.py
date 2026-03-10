@@ -255,7 +255,7 @@ Reasoning: [explanation]"""
                 options={
                     'temperature': self.temperature,
                     'num_predict': 150  # Short response
-                }
+                },
             )
             result = response['response']
         except Exception as e:

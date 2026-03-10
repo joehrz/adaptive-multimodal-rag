@@ -322,6 +322,10 @@ def _run_groundedness_check(query: str, response: str, retrieved_docs: List[Docu
         with st.spinner("Generating LLM-only answer for comparison..."):
             llm_only_answer = st.session_state.base_rag._generate_response(query, context="", require_citations=False)
 
+        if llm_only_answer.startswith("Error generating"):
+            st.error(f"Could not generate LLM-only answer: {llm_only_answer}")
+            return
+
         # Calculate word overlap
         words_rag = set(response.lower().split())
         words_llm = set(llm_only_answer.lower().split())

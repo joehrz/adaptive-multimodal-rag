@@ -540,7 +540,7 @@ REASONING: [brief explanation]"""
                     future_utility: 'utility'
                 }
 
-                for future in as_completed(futures):
+                for future in as_completed(futures, timeout=30):
                     task_name = futures[future]
                     try:
                         result = future.result()
@@ -565,6 +565,14 @@ REASONING: [brief explanation]"""
                             support, support_reasoning = SupportToken.PARTIALLY_SUPPORTED, f"Error: {e}"
                         elif task_name == 'utility':
                             utility, utility_reasoning = UtilityToken.SOMEWHAT_USEFUL, f"Error: {e}"
+
+            # Ensure defaults for any tasks that timed out
+            if relevance is None:
+                relevance, relevance_reasoning = RelevanceToken.PARTIALLY_RELEVANT, "Assessment timed out"
+            if support is None:
+                support, support_reasoning = SupportToken.PARTIALLY_SUPPORTED, "Assessment timed out"
+            if utility is None:
+                utility, utility_reasoning = UtilityToken.SOMEWHAT_USEFUL, "Assessment timed out"
         else:
             # Sequential execution (original behavior)
             try:
@@ -631,7 +639,28 @@ REASONING: [brief explanation]"""
             logger.info(f"SELF-RAG QUERY: {query[:60]}... | Documents: {len(documents)}")
 
         if not documents:
-            logger.warning("No documents provided - Self-RAG reflection may produce poor results")
+            logger.warning("No documents provided - skipping reflection")
+            answer, gen_time = self._generate_answer(query, documents)
+            total_time = time.time() - total_start
+            reflection = ReflectionResult(
+                relevance=RelevanceToken.IRRELEVANT,
+                support=SupportToken.NO_SUPPORT,
+                utility=UtilityToken.SOMEWHAT_USEFUL,
+                relevance_reasoning="Reflection skipped due to no source documents",
+                support_reasoning="Reflection skipped due to no source documents",
+                utility_reasoning="Reflection skipped due to no source documents",
+                reflection_time=0.0
+            )
+            return SelfRAGResult(
+                query=query,
+                answer=answer + "\n\n[Note: Reflection was skipped due to no source documents.]",
+                documents=documents,
+                reflection=reflection,
+                regeneration_count=0,
+                total_time=total_time,
+                generation_time=gen_time,
+                was_regenerated=False
+            )
 
         regeneration_count = 0
         best_answer = None

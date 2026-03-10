@@ -109,12 +109,27 @@ class OllamaAdaptiveRouter:
         """
         start_time = time.time()
 
+        # Validate query
+        if not query or len(query.strip()) < 2:
+            return RoutingDecision(
+                query=query,
+                complexity_score=0,
+                complexity_level=QueryComplexity.SIMPLE,
+                selected_strategy=RAGStrategy.BASELINE,
+                reasoning="Query too short for analysis",
+                expected_latency=self.strategy_stats[RAGStrategy.BASELINE]['avg_latency'],
+                expected_quality=self.strategy_stats[RAGStrategy.BASELINE]['avg_quality'],
+                routing_time=time.time() - start_time
+            )
+
         # Analyze query complexity
         analysis = self.query_analyzer.analyze_query(query)
 
         # Check for summarization queries (should use retrieval-based strategies, NOT GraphRAG)
         summarization_keywords = ['summarize', 'summary', 'summarise', 'overview', 'abstract',
-                                  'main points', 'key points', 'tldr', 'recap', 'brief',
+                                  'main points', 'key points', 'key findings', 'key takeaways',
+                                  'main contribution', 'main contributions', 'main idea',
+                                  'tldr', 'recap', 'brief',
                                   'describe the paper', 'what does the paper say',
                                   'related work', 'introduction', 'conclusion', 'methods',
                                   'methodology', 'results section', 'discussion section']

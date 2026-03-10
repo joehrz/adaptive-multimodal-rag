@@ -299,6 +299,18 @@ class TestRouterRouting:
         decision = router.route_query("Summarize and critically evaluate the methodology")
         assert decision.selected_strategy == RAGStrategy.HYDE_SELF_RAG
 
+    def test_main_contribution_routes_to_hyde(self, mock_analyzer):
+        mock_analyzer.analyze_query.return_value = _make_analysis(2)
+        router = OllamaAdaptiveRouter(query_analyzer=mock_analyzer, verbose=False)
+        decision = router.route_query("What is the main contribution of this paper?")
+        assert decision.selected_strategy == RAGStrategy.HYDE
+
+    def test_key_findings_routes_to_hyde(self, mock_analyzer):
+        mock_analyzer.analyze_query.return_value = _make_analysis(0)
+        router = OllamaAdaptiveRouter(query_analyzer=mock_analyzer, verbose=False)
+        decision = router.route_query("What are the key findings?")
+        assert decision.selected_strategy == RAGStrategy.HYDE
+
     def test_multimodal_takes_priority_over_graphrag(self, mock_analyzer):
         mock_analyzer.analyze_query.return_value = _make_analysis(8)
         router = OllamaAdaptiveRouter(query_analyzer=mock_analyzer, verbose=False)

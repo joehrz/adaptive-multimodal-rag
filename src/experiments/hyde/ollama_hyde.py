@@ -237,16 +237,31 @@ Question: {query}
 
 Informative passage:"""
 
-        response = ollama.generate(
-            model=self.model,
-            prompt=prompt,
-            options={
-                'temperature': self.temperature,
-                'num_predict': self.hypothetical_max_tokens,
-            }
-        )
+        max_retries = 2
+        last_error = None
 
-        return response['response'].strip()
+        for attempt in range(max_retries):
+            try:
+                response = ollama.generate(
+                    model=self.model,
+                    prompt=prompt,
+                    options={
+                        'temperature': self.temperature,
+                        'num_predict': self.hypothetical_max_tokens,
+                    }
+                )
+
+                return response['response'].strip()
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"HyDE generation failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in 2s...")
+                    time.sleep(2)
+                else:
+                    error_msg = f"Error generating hypothetical document after {max_retries} attempts: {last_error}"
+                    logger.error(error_msg)
+                    return error_msg
 
     def _retrieve_with_hypothetical(self, hypothetical_doc: str, query: str) -> Tuple[List[Document], List[Document]]:
         """
@@ -313,7 +328,7 @@ Informative passage:"""
         for doc in hyde_docs:
             # Use configurable minimum characters for robust deduplication
             dedup_chars = min(self.dedup_min_chars, len(doc.page_content))
-            content_hash = hashlib.sha256(doc.page_content[:dedup_chars].encode()).hexdigest()
+            content_hash = hashlib.sha256(doc.page_content[:dedup_chars].lower().encode()).hexdigest()
             if content_hash not in seen_hashes:
                 seen_hashes.add(content_hash)
                 doc.metadata['retrieval_method'] = 'hyde'
@@ -322,7 +337,7 @@ Informative passage:"""
         # Add standard docs that aren't duplicates
         for doc in standard_docs:
             dedup_chars = min(self.dedup_min_chars, len(doc.page_content))
-            content_hash = hashlib.sha256(doc.page_content[:dedup_chars].encode()).hexdigest()
+            content_hash = hashlib.sha256(doc.page_content[:dedup_chars].lower().encode()).hexdigest()
             if content_hash not in seen_hashes:
                 seen_hashes.add(content_hash)
                 doc.metadata['retrieval_method'] = 'standard'
@@ -334,7 +349,9 @@ Informative passage:"""
         """Detect if query is asking for a summary or overview"""
         summarization_keywords = [
             'summarize', 'summary', 'summarise', 'overview', 'abstract',
-            'main points', 'key points', 'tldr', 'recap', 'brief',
+            'main points', 'key points', 'key findings', 'key takeaways',
+            'main contribution', 'main contributions', 'main idea',
+            'tldr', 'recap', 'brief',
             'describe the paper', 'what does the paper say',
             'what is the paper about', 'what does this paper',
         ]
