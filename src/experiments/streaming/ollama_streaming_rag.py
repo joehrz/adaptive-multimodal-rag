@@ -99,6 +99,29 @@ class OllamaStreamingRAG:
         # Initialize HyDE engine for real embedding-based retrieval
         self._hyde_engine: Optional[OllamaHyDE] = None
 
+    def _format_conversation_history(self, conversation_history: list) -> str:
+        """Format conversation history for inclusion in prompts."""
+        if not conversation_history:
+            return ""
+
+        pairs = []
+        i = 0
+        while i < len(conversation_history) - 1:
+            if (conversation_history[i].get("role") == "user" and
+                    conversation_history[i + 1].get("role") == "assistant"):
+                user_msg = conversation_history[i]["content"]
+                assistant_msg = conversation_history[i + 1]["content"][:200]
+                pairs.append(f"User: {user_msg}\nAssistant: {assistant_msg}")
+                i += 2
+            else:
+                i += 1
+
+        if not pairs:
+            return ""
+
+        recent_pairs = pairs[-5:]
+        return "Previous conversation:\n" + "\n\n".join(recent_pairs) + "\n\n"
+
     def _get_hyde_engine(self) -> Optional['OllamaHyDE']:
         """
         Lazily initialize and return HyDE engine for embedding-based retrieval.
@@ -244,7 +267,8 @@ class OllamaStreamingRAG:
         query: str,
         documents: List[Document],
         on_token: Optional[Callable[[str], None]] = None,
-        on_progress: Optional[Callable[[StreamingProgress], None]] = None
+        on_progress: Optional[Callable[[StreamingProgress], None]] = None,
+        conversation_history: list = None
     ) -> Iterator[StreamChunk]:
         """
         Stream a complete RAG query with progress updates
@@ -254,6 +278,7 @@ class OllamaStreamingRAG:
             documents: Retrieved documents for context
             on_token: Callback for each generated token
             on_progress: Callback for progress updates
+            conversation_history: Optional list of message dicts with "role" and "content" keys
 
         Yields:
             StreamChunk objects for the complete RAG pipeline
@@ -282,12 +307,14 @@ class OllamaStreamingRAG:
                 timestamp=time.time()
             ))
 
+        conv_context = self._format_conversation_history(conversation_history)
+
         prompt = f"""Based on the following context documents, provide a comprehensive answer to the question. If the first document contains a hypothetical analysis, use it to inform your response while also incorporating information from the other retrieved documents.
 
 Context:
 {context}
 
-Question: {query}
+{conv_context}Question: {query}
 
 Provide a detailed answer that synthesizes information from all the context documents:"""
 
@@ -376,7 +403,8 @@ Analysis Document:"""
         vector_store: Optional[any] = None,
         top_k: int = 5,
         on_token: Optional[Callable[[str], None]] = None,
-        on_progress: Optional[Callable[[StreamingProgress], None]] = None
+        on_progress: Optional[Callable[[StreamingProgress], None]] = None,
+        conversation_history: list = None
     ) -> Iterator[StreamChunk]:
         """
         Stream a multi-stage RAG process with progress tracking
@@ -389,6 +417,7 @@ Analysis Document:"""
             top_k: Number of documents to retrieve with HyDE (default 5)
             on_token: Token callback
             on_progress: Progress callback
+            conversation_history: Optional list of message dicts with "role" and "content" keys
 
         Yields:
             StreamChunk objects for all stages
@@ -547,7 +576,8 @@ Analysis Document:"""
             query=query,
             documents=final_documents,
             on_token=on_token,
-            on_progress=on_progress
+            on_progress=on_progress,
+            conversation_history=conversation_history
         )
 
 

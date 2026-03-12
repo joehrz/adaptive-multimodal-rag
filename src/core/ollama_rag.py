@@ -565,8 +565,40 @@ class OllamaRAG:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in summarization_keywords)
 
-    def _generate_response(self, query: str, context: str = "", require_citations: bool = True) -> str:
+    def _format_conversation_history(self, conversation_history: list) -> str:
+        """Format conversation history for inclusion in prompts.
+
+        Args:
+            conversation_history: List of message dicts with "role" and "content" keys
+
+        Returns:
+            Formatted conversation string, or empty string if no history
+        """
+        if not conversation_history:
+            return ""
+
+        pairs = []
+        i = 0
+        while i < len(conversation_history) - 1:
+            if (conversation_history[i].get("role") == "user" and
+                    conversation_history[i + 1].get("role") == "assistant"):
+                user_msg = conversation_history[i]["content"]
+                assistant_msg = conversation_history[i + 1]["content"][:200]
+                pairs.append(f"User: {user_msg}\nAssistant: {assistant_msg}")
+                i += 2
+            else:
+                i += 1
+
+        if not pairs:
+            return ""
+
+        recent_pairs = pairs[-5:]
+        return "Previous conversation:\n" + "\n\n".join(recent_pairs) + "\n\n"
+
+    def _generate_response(self, query: str, context: str = "", require_citations: bool = True, conversation_history: list = None) -> str:
         """Generate response using Ollama with query-type-aware prompts"""
+
+        conv_context = self._format_conversation_history(conversation_history)
 
         if context:
             is_summarization = self._detect_summarization_query(query)
@@ -581,7 +613,7 @@ Do NOT say you cannot summarize - work with the context provided.
 Context:
 {context}
 
-Request: {query}
+{conv_context}Request: {query}
 
 Summary (with citations):"""
             elif require_citations:
@@ -593,7 +625,7 @@ Only say you cannot find the information if the context is truly unrelated to th
 Context:
 {context}
 
-Question: {query}
+{conv_context}Question: {query}
 
 Answer (with citations):"""
             else:
@@ -602,13 +634,13 @@ Answer (with citations):"""
 Context:
 {context}
 
-Question: {query}
+{conv_context}Question: {query}
 
 Answer:"""
         else:
             prompt = f"""Answer the following question concisely and accurately:
 
-Question: {query}
+{conv_context}Question: {query}
 
 Answer:"""
 
@@ -655,7 +687,7 @@ Answer:"""
                     logger.error(error_msg)
                     return error_msg
 
-    def query(self, question: str, use_retrieval: bool = True, bypass_cache: bool = False) -> str:
+    def query(self, question: str, use_retrieval: bool = True, bypass_cache: bool = False, conversation_history: list = None) -> str:
         """
         Query the RAG system
 
@@ -663,6 +695,7 @@ Answer:"""
             question: Question to ask
             use_retrieval: Whether to use document retrieval
             bypass_cache: Skip cache lookup (force fresh generation)
+            conversation_history: Optional list of message dicts with "role" and "content" keys
 
         Returns:
             Generated answer
@@ -712,7 +745,7 @@ Answer:"""
                 use_retrieval = False
 
         # Generate response
-        answer = self._generate_response(question, context)
+        answer = self._generate_response(question, context, conversation_history=conversation_history)
 
         # Cache the response
         if self.cache_manager:
