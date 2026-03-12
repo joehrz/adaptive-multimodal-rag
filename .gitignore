@@ -54,6 +54,7 @@ data/embeddings/*
 data/benchmarks/*
 data/results/*
 data/cache/*
+data/graph_cache/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep

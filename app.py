@@ -356,7 +356,7 @@ def _run_groundedness_check(query: str, response: str, retrieved_docs: List[Docu
             st.info("No explicit citations found. Consider if the answer references specific details only found in your documents.")
 
 
-def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]):
+def stream_response(query: str, strategy: RAGStrategy, documents: List[Document], conversation_history: list = None):
     """Stream response with progress updates"""
     response_placeholder = st.empty()
     progress_placeholder = st.empty()
@@ -377,7 +377,7 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
         # Handle different strategies
         if strategy == RAGStrategy.BASELINE:
             progress_placeholder.info(stages["generating"])
-            response = st.session_state.base_rag.query(query)
+            response = st.session_state.base_rag.query(query, conversation_history=conversation_history)
             if isinstance(response, dict):
                 full_response = response.get('answer', str(response))
             else:
@@ -427,6 +427,17 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
             if st.session_state.graph_rag.graph.number_of_nodes() == 0 and documents:
                 progress_placeholder.info("Building knowledge graph from documents...")
                 st.session_state.graph_rag.build_graph_from_documents(documents)
+
+                # Auto-save graph to cache for future reuse
+                try:
+                    import re as _re
+                    source_names = set(doc.metadata.get("source", "unknown") for doc in documents)
+                    sanitized = _re.sub(r'[^a-zA-Z0-9]', '_', "_".join(sorted(source_names)))
+                    graph_save_path = os.path.join("data", "graph_cache", f"{sanitized}_graph.json")
+                    os.makedirs(os.path.dirname(graph_save_path), exist_ok=True)
+                    st.session_state.graph_rag.save_graph(graph_save_path)
+                except Exception:
+                    pass  # Non-critical, graph is still in memory
 
             # Get retrieved documents from vector store to provide as additional context
             retrieved_docs = []
@@ -494,7 +505,8 @@ def stream_response(query: str, strategy: RAGStrategy, documents: List[Document]
                 vector_store=vector_store,
                 top_k=5,
                 on_token=None,
-                on_progress=None
+                on_progress=None,
+                conversation_history=conversation_history
             ):
                 if chunk.content:
                     full_response += chunk.content
@@ -666,10 +678,21 @@ def main():
                     st.metric("Relationships", graph_stats["relationships"])
                     st.metric("Communities", graph_stats["communities"])
 
-                    if st.button("Clear Graph"):
-                        st.session_state.graph_rag.clear_graph()
-                        st.success("Graph cleared!")
-                        st.rerun()
+                    col_g1, col_g2 = st.columns(2)
+                    with col_g1:
+                        if st.button("Clear Graph"):
+                            st.session_state.graph_rag.clear_graph()
+                            st.success("Graph cleared!")
+                            st.rerun()
+                    with col_g2:
+                        if st.button("Clear Graph Cache"):
+                            cache_dir = os.path.join("data", "graph_cache")
+                            if os.path.exists(cache_dir):
+                                shutil.rmtree(cache_dir)
+                                st.success("Graph cache cleared")
+                            else:
+                                st.info("No graph cache to clear")
+                            st.rerun()
 
         # Sample documents for testing
         if len(st.session_state.documents) == 0:
@@ -837,6 +860,19 @@ def main():
 
             if total_files > 1:
                 st.info(f"Completed processing {total_files} files. Total documents in system: {len(st.session_state.documents)}")
+
+            # Try to load a cached knowledge graph for these documents
+            if GRAPHRAG_AVAILABLE and st.session_state.graph_rag:
+                try:
+                    import re as _re
+                    source_names = set(uf.name for uf in uploaded_files)
+                    sanitized = _re.sub(r'[^a-zA-Z0-9]', '_', "_".join(sorted(source_names)))
+                    graph_cache_path = os.path.join("data", "graph_cache", f"{sanitized}_graph.json")
+                    if os.path.exists(graph_cache_path):
+                        st.session_state.graph_rag.load_graph(graph_cache_path)
+                        st.success(f"Loaded cached knowledge graph ({len(st.session_state.graph_rag.entities)} entities)")
+                except Exception:
+                    pass  # Will rebuild on first GraphRAG query
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1029,7 +1065,7 @@ def main():
                         )
 
                 st.info(f"Selected strategy: **{selected_strategy.value.upper()}** (complexity: {complexity}/10)")
-                response = stream_response(prompt, selected_strategy, st.session_state.documents)
+                response = stream_response(prompt, selected_strategy, st.session_state.documents, conversation_history=st.session_state.messages[:-1])
             else:
                 strategy_map = {
                     "Baseline RAG": RAGStrategy.BASELINE,
@@ -1040,7 +1076,7 @@ def main():
                 }
                 selected_strategy = strategy_map.get(manual_strategy, RAGStrategy.BASELINE)
                 complexity = 0
-                response = stream_response(prompt, selected_strategy, st.session_state.documents)
+                response = stream_response(prompt, selected_strategy, st.session_state.documents, conversation_history=st.session_state.messages[:-1])
 
             elapsed_time = time.time() - start_time
 
