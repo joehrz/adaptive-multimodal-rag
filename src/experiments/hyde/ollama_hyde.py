@@ -25,7 +25,6 @@ try:
 except ImportError:
     OLLAMA_AVAILABLE = False
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.schema import Document
 
@@ -178,9 +177,11 @@ class OllamaHyDE:
             raise ConnectionError(f"Failed to connect to Ollama: {e}")
 
         # Initialize embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=_embedding_model,
-            model_kwargs={'device': _embedding_device}
+        from src.core.embeddings import get_embeddings
+        self.embeddings = get_embeddings(
+            config=config.embeddings if config else None,
+            model=_embedding_model,
+            device=_embedding_device,
         )
 
         self.vector_store = None

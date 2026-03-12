@@ -41,6 +41,13 @@ class EmbeddingsConfig:
     """Embedding model configuration"""
     model: str = "all-MiniLM-L6-v2"
     device: str = "cpu"
+    backend: str = "huggingface"  # "huggingface" or "ollama"
+
+    def __post_init__(self):
+        if self.backend not in ("huggingface", "ollama"):
+            raise ConfigValidationError(
+                f"embeddings backend must be 'huggingface' or 'ollama', got '{self.backend}'"
+            )
 
 
 @dataclass
@@ -68,6 +75,7 @@ class DocumentsConfig:
     chunk_overlap: int = 200
     k_retrieval: int = 10
     dedup_min_chars: int = 500  # Minimum characters for deduplication hash
+    chunking_strategy: str = "recursive"  # "recursive" or "semantic"
 
     def __post_init__(self):
         if self.chunk_size <= 0:
@@ -78,6 +86,8 @@ class DocumentsConfig:
             raise ConfigValidationError(f"chunk_overlap ({self.chunk_overlap}) must be less than chunk_size ({self.chunk_size})")
         if self.k_retrieval <= 0:
             raise ConfigValidationError(f"k_retrieval must be positive, got {self.k_retrieval}")
+        if self.chunking_strategy not in ("recursive", "semantic"):
+            raise ConfigValidationError(f"chunking_strategy must be 'recursive' or 'semantic', got '{self.chunking_strategy}'")
 
 
 @dataclass
@@ -328,6 +338,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
         embeddings=EmbeddingsConfig(
             model=_get_nested_value(config_dict, 'embeddings.model', 'all-MiniLM-L6-v2'),
             device=_get_nested_value(config_dict, 'embeddings.device', 'cpu'),
+            backend=_get_nested_value(config_dict, 'embeddings.backend', 'huggingface'),
         ),
         reranker=RerankerConfig(
             enabled=bool(_get_nested_value(config_dict, 'reranker.enabled', True)),
@@ -341,6 +352,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
             chunk_overlap=int(_get_nested_value(config_dict, 'documents.chunk_overlap', 200)),
             k_retrieval=int(_get_nested_value(config_dict, 'documents.k_retrieval', 10)),
             dedup_min_chars=int(_get_nested_value(config_dict, 'documents.dedup_min_chars', 500)),
+            chunking_strategy=_get_nested_value(config_dict, 'documents.chunking_strategy', 'recursive'),
         ),
         vector_db=VectorDBConfig(
             persist_directory=_get_nested_value(config_dict, 'vector_db.persist_directory', './data/chroma_db_ollama'),

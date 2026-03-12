@@ -11,6 +11,7 @@ llm:
 embeddings:
   model: "all-MiniLM-L6-v2"  # HuggingFace embedding model
   device: "cpu"              # Device for embeddings (cpu, cuda)
+  backend: "huggingface"     # "huggingface" or "ollama" (use nomic-embed-text for ollama)
 
 # Ollama Server
 ollama:
@@ -30,6 +31,7 @@ documents:
   chunk_size: 1000      # Size of document chunks in characters
   chunk_overlap: 200    # Overlap between chunks
   k_retrieval: 10       # Number of documents to retrieve
+  chunking_strategy: "recursive"  # "recursive" or "semantic"
 
 # Vector Database
 vector_db:

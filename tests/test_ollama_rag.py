@@ -39,7 +39,7 @@ def mock_ollama():
 @pytest.fixture
 def rag_instance(mock_ollama):
     """Create an OllamaRAG instance with mocked dependencies."""
-    with patch('src.core.ollama_rag.HuggingFaceEmbeddings') as mock_emb:
+    with patch('src.core.embeddings.get_embeddings') as mock_emb:
         mock_emb.return_value = MagicMock()
         from src.core.ollama_rag import OllamaRAG
         instance = OllamaRAG(model="qwen2.5:14b", verbose=False)
@@ -49,7 +49,7 @@ def rag_instance(mock_ollama):
 @pytest.fixture
 def rag_instance_with_cache(mock_ollama):
     """Create an OllamaRAG instance with a mocked cache manager."""
-    with patch('src.core.ollama_rag.HuggingFaceEmbeddings') as mock_emb:
+    with patch('src.core.embeddings.get_embeddings') as mock_emb:
         mock_emb.return_value = MagicMock()
         from src.core.ollama_rag import OllamaRAG
         instance = OllamaRAG(model="qwen2.5:14b", verbose=False)
@@ -74,7 +74,7 @@ class TestOllamaRAGInit:
         with patch('src.core.ollama_rag.ollama') as mock_ol, \
              patch('src.core.ollama_rag.OLLAMA_AVAILABLE', True), \
              patch('src.core.ollama_rag.CONFIG_AVAILABLE', False), \
-             patch('src.core.ollama_rag.HuggingFaceEmbeddings'):
+             patch('src.core.embeddings.get_embeddings'):
             mock_ol.list.side_effect = Exception("Connection refused")
             from src.core.ollama_rag import OllamaRAG
             with pytest.raises(ConnectionError, match="Failed to connect to Ollama"):
@@ -89,7 +89,7 @@ class TestOllamaRAGInit:
         with patch('src.core.ollama_rag.ollama') as mock_ol, \
              patch('src.core.ollama_rag.OLLAMA_AVAILABLE', True), \
              patch('src.core.ollama_rag.CONFIG_AVAILABLE', False), \
-             patch('src.core.ollama_rag.HuggingFaceEmbeddings'):
+             patch('src.core.embeddings.get_embeddings'):
             mock_ol.list.return_value = mock_list_result
             from src.core.ollama_rag import OllamaRAG
             # Model "qwen2.5:14b" is not in the list (only "llama2:7b")
@@ -109,7 +109,7 @@ class TestOllamaRAGInit:
         assert rag_instance.documents == []
 
     def test_initializes_with_explicit_parameters(self, mock_ollama):
-        with patch('src.core.ollama_rag.HuggingFaceEmbeddings') as mock_emb:
+        with patch('src.core.embeddings.get_embeddings') as mock_emb:
             mock_emb.return_value = MagicMock()
             from src.core.ollama_rag import OllamaRAG
             instance = OllamaRAG(
@@ -145,7 +145,7 @@ class TestOllamaRAGInit:
         mock_config.logging.verbose = True
         mock_config.cache.enabled = False
 
-        with patch('src.core.ollama_rag.HuggingFaceEmbeddings') as mock_emb:
+        with patch('src.core.embeddings.get_embeddings') as mock_emb:
             mock_emb.return_value = MagicMock()
             from src.core.ollama_rag import OllamaRAG
             instance = OllamaRAG(

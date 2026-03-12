@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from pathlib import Path
 import json
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -158,9 +157,11 @@ class OllamaRAG:
             raise ConnectionError(f"Failed to connect to Ollama: {e}")
 
         # Initialize embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=_embedding_model,
-            model_kwargs={'device': _embedding_device}
+        from src.core.embeddings import get_embeddings
+        self.embeddings = get_embeddings(
+            config=config.embeddings if config else None,
+            model=_embedding_model,
+            device=_embedding_device,
         )
 
         # Initialize cross-encoder reranker
@@ -181,10 +182,19 @@ class OllamaRAG:
                 logger.warning("Reranker requested but sentence-transformers not installed")
 
         # Initialize text splitter
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=_chunk_size,
-            chunk_overlap=_chunk_overlap
-        )
+        _chunking_strategy = config.documents.chunking_strategy if config else "recursive"
+        if _chunking_strategy == "semantic":
+            from src.core.chunking import SemanticChunker
+            self.text_splitter = SemanticChunker(
+                embeddings=self.embeddings,
+                min_chunk_size=200,
+                max_chunk_size=_chunk_size * 2,
+            )
+        else:
+            self.text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=_chunk_size,
+                chunk_overlap=_chunk_overlap
+            )
 
         self.vector_store = None
         self.documents = []

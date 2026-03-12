@@ -121,7 +121,7 @@ def mock_ollama():
 @pytest.fixture
 def hyde_instance(mock_ollama):
     """Create an OllamaHyDE instance with mocked dependencies."""
-    with patch('src.experiments.hyde.ollama_hyde.HuggingFaceEmbeddings') as mock_emb:
+    with patch('src.core.embeddings.get_embeddings') as mock_emb:
         mock_emb.return_value = MagicMock()
         from src.experiments.hyde.ollama_hyde import OllamaHyDE
         instance = OllamaHyDE(model="qwen2.5:14b", verbose=False)
@@ -138,7 +138,7 @@ class TestOllamaHyDEInit:
         assert hyde_instance.documents == []
 
     def test_init_custom_params(self, mock_ollama):
-        with patch('src.experiments.hyde.ollama_hyde.HuggingFaceEmbeddings') as mock_emb:
+        with patch('src.core.embeddings.get_embeddings') as mock_emb:
             mock_emb.return_value = MagicMock()
             from src.experiments.hyde.ollama_hyde import OllamaHyDE
             instance = OllamaHyDE(
