@@ -151,6 +151,8 @@ class GraphRAGConfig:
     timeout: int = 60
     max_entities_per_doc: int = 7
     max_relationships_per_doc: int = 5
+    max_documents: int = 30
+    graph_building_model: Optional[str] = None
 
     def __post_init__(self):
         if self.max_hops <= 0:
@@ -161,6 +163,8 @@ class GraphRAGConfig:
             raise ConfigValidationError(f"max_entities_per_doc must be positive, got {self.max_entities_per_doc}")
         if self.max_relationships_per_doc <= 0:
             raise ConfigValidationError(f"max_relationships_per_doc must be positive, got {self.max_relationships_per_doc}")
+        if self.max_documents is not None and self.max_documents <= 0:
+            raise ConfigValidationError(f"max_documents must be positive, got {self.max_documents}")
 
 
 @dataclass
@@ -385,6 +389,8 @@ def load_config(config_path: Optional[str] = None) -> Config:
                 timeout=int(_get_nested_value(config_dict, 'strategies.graphrag.timeout', 60)),
                 max_entities_per_doc=int(_get_nested_value(config_dict, 'strategies.graphrag.max_entities_per_doc', 7)),
                 max_relationships_per_doc=int(_get_nested_value(config_dict, 'strategies.graphrag.max_relationships_per_doc', 5)),
+                max_documents=int(_get_nested_value(config_dict, 'strategies.graphrag.max_documents', 30)),
+                graph_building_model=_get_nested_value(config_dict, 'strategies.graphrag.graph_building_model', None),
             ),
         ),
         cache=CacheConfig(

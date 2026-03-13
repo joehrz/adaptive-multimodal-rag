@@ -61,6 +61,10 @@ strategies:
   graphrag:
     max_hops: 3                   # Maximum hops in graph traversal
     timeout: 60                   # Timeout for LLM calls in seconds
+    max_entities_per_doc: 7       # Maximum entities to extract per document
+    max_relationships_per_doc: 5  # Maximum relationships to extract per document
+    max_documents: 30             # Max chunks to process for graph building
+    graph_building_model: null    # Use a smaller model for graph building (e.g., qwen2.5:3b)
 
 # Caching
 cache:

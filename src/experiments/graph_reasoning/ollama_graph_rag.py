@@ -128,6 +128,7 @@ class OllamaGraphRAG:
     def __init__(
         self,
         model: Optional[str] = None,
+        graph_building_model: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         max_hops: Optional[int] = None,
@@ -136,12 +137,14 @@ class OllamaGraphRAG:
         timeout: Optional[int] = None,
         max_entities_per_doc: Optional[int] = None,
         max_relationships_per_doc: Optional[int] = None,
+        max_documents: Optional[int] = None,
     ):
         """
         Initialize GraphRAG system
 
         Args:
             model: Ollama model to use
+            graph_building_model: Smaller/faster model for graph building (entity/relationship extraction)
             temperature: Generation temperature
             max_tokens: Maximum tokens for generation
             max_hops: Maximum hops in graph traversal
@@ -150,6 +153,7 @@ class OllamaGraphRAG:
             timeout: Timeout for LLM calls in seconds
             max_entities_per_doc: Maximum entities to extract per document
             max_relationships_per_doc: Maximum relationships to extract per document
+            max_documents: Maximum document chunks to process for graph building
         """
         if not OLLAMA_AVAILABLE:
             raise ImportError("ollama package not found. Install with: pip install ollama")
@@ -171,6 +175,8 @@ class OllamaGraphRAG:
             self.timeout = timeout if timeout is not None else config.strategies.graphrag.timeout
             self.max_entities_per_doc = max_entities_per_doc if max_entities_per_doc is not None else config.strategies.graphrag.max_entities_per_doc
             self.max_relationships_per_doc = max_relationships_per_doc if max_relationships_per_doc is not None else config.strategies.graphrag.max_relationships_per_doc
+            self.max_documents = max_documents if max_documents is not None else config.strategies.graphrag.max_documents
+            self.graph_building_model = graph_building_model or config.strategies.graphrag.graph_building_model or self.model
         else:
             # Fallback to hardcoded defaults if no config available
             self.model = model or "qwen2.5:14b"
@@ -181,6 +187,8 @@ class OllamaGraphRAG:
             self.timeout = timeout or 60
             self.max_entities_per_doc = max_entities_per_doc or 7
             self.max_relationships_per_doc = max_relationships_per_doc or 5
+            self.max_documents = max_documents or 30
+            self.graph_building_model = graph_building_model or self.model
 
         # Initialize graph
         self.graph = nx.DiGraph()
@@ -226,7 +234,7 @@ Extract 3-{self.max_entities_per_doc} key entities:"""
 
         try:
             response = ollama.generate(
-                model=self.model,
+                model=self.graph_building_model,
                 prompt=prompt,
                 options={'temperature': 0.2, 'num_predict': 500},
             )
@@ -284,7 +292,7 @@ Identify 2-{self.max_relationships_per_doc} key relationships:"""
 
         try:
             response = ollama.generate(
-                model=self.model,
+                model=self.graph_building_model,
                 prompt=prompt,
                 options={'temperature': 0.2, 'num_predict': 400},
             )
@@ -403,19 +411,20 @@ Identify 2-{self.max_relationships_per_doc} key relationships:"""
 Summary:"""
 
         response = ollama.generate(
-            model=self.model,
+            model=self.graph_building_model,
             prompt=prompt,
             options={'temperature': 0.3, 'num_predict': 100},
         )
 
         return response['response'].strip()
 
-    def build_graph_from_documents(self, documents: List[Document]) -> Dict[str, int]:
+    def build_graph_from_documents(self, documents: List[Document], max_documents: Optional[int] = None) -> Dict[str, int]:
         """
         Build knowledge graph from documents
 
         Args:
             documents: List of documents to process
+            max_documents: Maximum chunks to process (overrides config). Samples evenly across the document list.
 
         Returns:
             Statistics about the graph
@@ -426,6 +435,13 @@ Summary:"""
             if self.verbose:
                 logger.warning("No documents provided to build_graph_from_documents()")
             return {"documents_processed": 0, "entities": 0, "relationships": 0, "communities": 0, "build_time": 0}
+
+        limit = max_documents if max_documents is not None else self.max_documents
+        if limit is not None and len(documents) > limit:
+            step = len(documents) / limit
+            documents = [documents[int(i * step)] for i in range(limit)]
+            if self.verbose:
+                logger.info(f"Sampled {len(documents)} chunks from original set (max_documents={limit})")
 
         if self.verbose:
             logger.info(f"BUILDING KNOWLEDGE GRAPH from {len(documents)} documents")

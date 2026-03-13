@@ -148,7 +148,6 @@ class OllamaAdaptiveRouter:
         # Be more specific - require actual relationship reasoning patterns, not just keyword presence
         graph_keywords = ['relationship between', 'how does .* relate to', 'connection between',
                          'connect .* to', 'link between', 'path from .* to',
-                         'compare .* with', 'contrast .* and', 'versus',
                          'how does .* affect', 'how do .* interact',
                          'what leads to', 'cause of', 'impact of .* on']
 
