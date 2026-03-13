@@ -58,6 +58,7 @@ class RerankerConfig:
     device: str = "cpu"
     top_k: int = 10
     candidates: int = 30
+    min_score: float = 5.0
 
     def __post_init__(self):
         if self.top_k <= 0:
@@ -346,6 +347,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
             device=_get_nested_value(config_dict, 'reranker.device', 'cpu'),
             top_k=int(_get_nested_value(config_dict, 'reranker.top_k', 10)),
             candidates=int(_get_nested_value(config_dict, 'reranker.candidates', 30)),
+            min_score=float(_get_nested_value(config_dict, 'reranker.min_score', 0.0)),
         ),
         documents=DocumentsConfig(
             chunk_size=int(_get_nested_value(config_dict, 'documents.chunk_size', 1000)),

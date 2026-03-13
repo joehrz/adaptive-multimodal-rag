@@ -117,6 +117,7 @@ class OllamaRAG:
             _reranker_device = config.reranker.device
             self.reranker_top_k = config.reranker.top_k
             self.reranker_candidates = config.reranker.candidates
+            self.reranker_min_score = config.reranker.min_score
         else:
             # Fallback to hardcoded defaults if no config available
             self.model = model or "qwen2.5:14b"
@@ -137,6 +138,7 @@ class OllamaRAG:
             _reranker_device = "cpu"
             self.reranker_top_k = 10
             self.reranker_candidates = 30
+            self.reranker_min_score = 5.0
 
         # Test Ollama connection
         try:
@@ -421,13 +423,28 @@ class OllamaRAG:
                 reverse=True
             )
 
-            reranked = [doc for score, doc in scored_docs[:top_k]]
+            # Filter out chunks that score far below the top result.
+            # Uses a relative gap: drop anything more than `max_score_gap` points
+            # below the best chunk. This handles cases where all scores are negative
+            # (e.g., conversational queries) while still removing irrelevant chunks.
+            max_gap = getattr(self, 'reranker_min_score', 5.0)
+            top_score_val = scored_docs[0][0] if scored_docs else 0
+            score_floor = top_score_val - max_gap
+
+            filtered = [(score, doc) for score, doc in scored_docs if score >= score_floor]
+
+            # Always keep at least 1 document
+            if not filtered and scored_docs:
+                filtered = [scored_docs[0]]
+
+            reranked = [doc for score, doc in filtered[:top_k]]
 
             if self.verbose:
-                top_score = scored_docs[0][0] if scored_docs else 0
-                bottom_score = scored_docs[min(top_k - 1, len(scored_docs) - 1)][0] if scored_docs else 0
+                dropped = len(scored_docs) - len(filtered)
+                bottom_score = filtered[-1][0] if filtered else 0
                 logger.info(f"[RERANK] Reranked {len(documents)} -> {len(reranked)} docs "
-                           f"(scores: {top_score:.3f} to {bottom_score:.3f})")
+                           f"(scores: {top_score_val:.3f} to {bottom_score:.3f}"
+                           f"{f', dropped {dropped} below gap {max_gap}' if dropped > 0 else ''})")
 
             return reranked
 
@@ -733,9 +750,15 @@ Answer:"""
                 # Use all retrieved docs, with more content per doc for summarization
                 max_chars_per_doc = 2000 if is_summarization else 1000
                 context = "\n\n".join([
-                    f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}): {doc.page_content[:max_chars_per_doc]}"
+                    f"Document {i+1} ({doc.metadata.get('source', 'Unknown')}, page {doc.metadata.get('page', '?')}): {doc.page_content[:max_chars_per_doc]}"
                     for i, doc in enumerate(docs)
                 ])
+
+                # When chunks come from multiple source files, add a note
+                sources = set(doc.metadata.get('source', '') for doc in docs)
+                if len(sources) > 1:
+                    source_list = ", ".join(sorted(sources))
+                    context = f"Note: The following context contains excerpts from multiple documents: {source_list}. Only use information from the document(s) relevant to the question.\n\n{context}"
 
                 if self.verbose:
                     logger.info(f"Using {len(docs)} documents as context ({len(context)} chars)")

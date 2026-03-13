@@ -25,6 +25,7 @@ reranker:
   device: "cpu"                                    # Device for reranker (cpu, cuda)
   top_k: 10                                        # Number of documents to keep after reranking
   candidates: 30                                   # Number of candidates to retrieve before reranking
+  min_score: 5.0                                   # Max score gap from top chunk (drops irrelevant docs)
 
 # Document Processing
 documents:
