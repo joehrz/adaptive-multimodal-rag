@@ -6,91 +6,21 @@ A research project exploring automatic RAG strategy selection based on query com
 
 Standard RAG systems use a fixed retrieval pipeline regardless of query complexity. Simple factual questions get the same treatment as complex analytical queries. This project explores whether automatic routing between different RAG techniques can improve results.
 
-## System Architecture
-
-```mermaid
-flowchart TB
-    subgraph Input
-        A[User Query] --> B[Query Analyzer]
-        D[PDF Documents] --> E[Document Processor]
-    end
-
-    subgraph Analysis["Query Analysis"]
-        B --> F[Heuristic Scoring]
-        B --> G[LLM Scoring]
-        F --> H[Weighted Score\n30% heuristic + 70% LLM]
-        G --> H
-    end
-
-    subgraph Routing["Adaptive Router"]
-        H --> I{Route Decision}
-        I -->|Visual keywords| J[Multimodal]
-        I -->|Relationship patterns\n& score 6+| K[GraphRAG]
-        I -->|Summarization| L[HyDE]
-        I -->|Score 0-3| M[Baseline]
-        I -->|Score 4-7| L
-        I -->|Score 8-10| N[HyDE + Self-RAG]
-    end
-
-    subgraph Processing["Document Processing"]
-        E --> O[Chunking\nRecursive / Semantic]
-        O --> P[Embedding\nHuggingFace / Ollama]
-        P --> Q[(Vector Store\nChromaDB)]
-    end
-
-    subgraph Strategies["Strategy Execution"]
-        M --> R[Vector Retrieval\n+ Reranking]
-        L --> S[Generate Hypothetical\nDocument]
-        S --> T[Embed Hypothetical\n& Retrieve]
-        K --> U[Build Knowledge Graph\nEntities & Relationships]
-        U --> V[Graph Traversal\nMulti-hop Paths]
-        N --> S
-        T --> R
-        V --> R
-        R --> W[Cross-Encoder\nReranking]
-        N --> X[Reflection Tokens\nRelevance / Support / Utility]
-        J --> Y[LLaVA Vision\nProcessing]
-    end
-
-    subgraph Output
-        W --> Z[LLM Generation\nwith Streaming]
-        X -->|Quality check| Z
-        Y --> Z
-        Z --> AA[Response\nwith Citations]
-    end
-
-    Q --> R
-
-    style Input fill:#e8f4f8,stroke:#2196F3
-    style Analysis fill:#fff3e0,stroke:#FF9800
-    style Routing fill:#fce4ec,stroke:#E91E63
-    style Processing fill:#e8f5e9,stroke:#4CAF50
-    style Strategies fill:#f3e5f5,stroke:#9C27B0
-    style Output fill:#e0f2f1,stroke:#009688
-```
-
-## Query Routing Flow
+## How It Works
 
 ```mermaid
 flowchart LR
-    A[Query] --> B{Visual\nkeywords?}
-    B -->|Yes| C[Multimodal]
-    B -->|No| D{Relationship\npatterns?}
-    D -->|Yes & score 6+| E[GraphRAG]
-    D -->|No| F{Summarization?}
-    F -->|Yes & score 8+| G[HyDE + Self-RAG]
-    F -->|Yes & score < 8| H[HyDE]
-    F -->|No| I{Complexity\nScore}
-    I -->|0-3| J[Baseline RAG]
-    I -->|4-7| H
-    I -->|8-10| G
-
-    style C fill:#e1bee7,stroke:#9C27B0
-    style E fill:#bbdefb,stroke:#2196F3
-    style G fill:#ffcdd2,stroke:#E91E63
-    style H fill:#fff9c4,stroke:#FFC107
-    style J fill:#c8e6c9,stroke:#4CAF50
+    A[Query] --> B[Analyze\nComplexity]
+    B --> C{Route}
+    C --> D[Baseline]
+    C --> E[HyDE]
+    C --> F[Self-RAG]
+    C --> G[GraphRAG]
+    C --> H[Multimodal]
+    D & E & F & G & H --> I[Response]
 ```
+
+See [docs/architecture.md](docs/architecture.md) for detailed diagrams covering the full pipeline, routing logic, strategy internals, document processing, and caching layers.
 
 ## Implemented Techniques
 
