@@ -26,33 +26,6 @@ flowchart TB
     M --> N[Return Response with Citations]
 ```
 
-## Query Analysis
-
-The analyzer combines fast heuristic signals with LLM judgment to score query complexity on a 0-10 scale.
-
-```mermaid
-flowchart LR
-    A[Query] --> B[Heuristic Scoring]
-    A --> C[LLM Scoring]
-
-    subgraph Heuristics
-        B --> B1[Query length & word count]
-        B --> B2[Comparison keywords\ncompare, contrast, vs]
-        B --> B3[Analysis keywords\nanalyze, evaluate, impact]
-        B --> B4[Simple question patterns\nwhat, who, when, define]
-        B --> B5[Technical terms\nalgorithm, architecture]
-    end
-
-    subgraph LLM
-        C --> C1["Prompt: score 0-10\n0-3 simple, 4-7 medium, 8-10 complex"]
-    end
-
-    B1 & B2 & B3 & B4 & B5 --> D[Heuristic Score]
-    C1 --> E[LLM Score]
-    D -->|Weight: 0.3| F[Final Complexity Score]
-    E -->|Weight: 0.7| F
-```
-
 ## Routing Decision Tree
 
 The router checks query characteristics in priority order. The first matching rule wins.
@@ -126,42 +99,3 @@ flowchart TB
     style Graph fill:#bbdefb,stroke:#2196F3
 ```
 
-## Document Processing Pipeline
-
-How uploaded PDFs become searchable vector embeddings.
-
-```mermaid
-flowchart LR
-    A[PDF Upload] --> B[Text Extraction]
-    B --> C[OCR Fallback\nEasyOCR / Tesseract]
-    B --> D{Chunking\nStrategy}
-    D -->|Recursive| E[Fixed-Size Chunks\nwith Overlap]
-    D -->|Semantic| F[Embedding Similarity\nSplit at Topic Boundaries]
-    E & F --> G[Generate Embeddings]
-    G --> H{Backend}
-    H -->|HuggingFace| I[all-MiniLM-L6-v2]
-    H -->|Ollama| J[nomic-embed-text]
-    I & J --> K[(ChromaDB\nVector Store)]
-```
-
-## Caching Layers
-
-The caching system sits between the user and the pipeline to avoid redundant computation.
-
-```mermaid
-flowchart TB
-    A[Incoming Query] --> B{Semantic Query\nCache}
-    B -->|Hit: similar query\npreviously answered| C[Return Cached Response]
-    B -->|Miss| D[Run Full Pipeline]
-    D --> E[Retrieve Documents]
-    E --> F{Vector Search\nCache}
-    F -->|Hit: embeddings\ncached| G[Return Cached Vectors]
-    F -->|Miss| H[Compute Embeddings]
-    H --> I[Cache Vectors]
-    G & I --> J[Continue Pipeline]
-    J --> K[Cache Final Response]
-    K --> L[Return Response]
-
-    style B fill:#fff9c4,stroke:#FFC107
-    style F fill:#bbdefb,stroke:#2196F3
-```
