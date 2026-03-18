@@ -301,7 +301,7 @@ def _display_retrieved_chunks(retrieved_docs: List[Document]):
             page = doc.metadata.get('page', '')
             page_str = f" | Page {page}" if page else ""
             content_preview = doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content
-            st.markdown(f"**Chunk {i+1}** — `{source}{page_str}`")
+            st.markdown(f"**Chunk {i+1}** -`{source}{page_str}`")
             st.text_area(
                 f"chunk_{i+1}",
                 content_preview,
@@ -342,16 +342,16 @@ def _run_groundedness_check(query: str, response: str, retrieved_docs: List[Docu
             st.markdown("**Overlap**")
             st.metric("Word Overlap", f"{overlap:.0%}")
             if overlap > 0.8:
-                st.error("HIGH — LLM may be using training data")
+                st.error("HIGH -LLM may be using training data")
             elif overlap > 0.5:
-                st.warning("MEDIUM — Partial reliance on training data")
+                st.warning("MEDIUM -Partial reliance on training data")
             else:
-                st.success("LOW — RAG is providing unique info")
+                st.success("LOW -RAG is providing unique info")
 
         # Check for document citations
         has_citations = "[Document" in response or "[Doc" in response
         if has_citations:
-            st.success("Answer contains document citations — good sign RAG is grounding the response")
+            st.success("Answer contains document citations -good sign RAG is grounding the response")
         else:
             st.info("No explicit citations found. Consider if the answer references specific details only found in your documents.")
 
@@ -1033,7 +1033,7 @@ def main():
                         st.markdown(f"**Retrieved Document Chunks ({len(verification['retrieved_docs'])}):**")
                         for i, doc in enumerate(verification["retrieved_docs"]):
                             page_str = f" | Page {doc['page']}" if doc.get('page') else ""
-                            st.markdown(f"**Chunk {i+1}** — `{doc['source']}{page_str}` ({doc['full_length']} chars)")
+                            st.markdown(f"**Chunk {i+1}** -`{doc['source']}{page_str}` ({doc['full_length']} chars)")
                             st.text_area(
                                 f"verify_doc_{i+1}",
                                 doc["content_preview"],
