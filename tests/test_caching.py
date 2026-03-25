@@ -164,17 +164,6 @@ class TestLRUCache:
         assert cache.stats.hits == 1
         assert cache.stats.misses == 1
 
-    def test_generate_key_string(self):
-        cache = LRUCache()
-        key = cache._generate_key("test string")
-        assert isinstance(key, str)
-        assert len(key) == 32
-
-    def test_generate_key_non_string(self):
-        cache = LRUCache()
-        key = cache._generate_key({"key": "value"})
-        assert isinstance(key, str)
-        assert len(key) == 32
 
 
 # --- SemanticQueryCache tests ---

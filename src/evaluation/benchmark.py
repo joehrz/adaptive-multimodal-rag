@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.evaluation.metrics import RAGEvaluator, EvaluationResult, compute_rouge_l
+from src.evaluation.metrics import RAGEvaluator, EvaluationResult
 
 logger = logging.getLogger(__name__)
 

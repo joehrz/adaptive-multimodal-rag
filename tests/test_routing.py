@@ -13,12 +13,10 @@ sys.path.insert(0, '/home/dxxc/my_projects/python_projects/adaptive-multimodal-r
 from src.experiments.adaptive_routing.ollama_router import (
     RAGStrategy,
     RoutingDecision,
-    StrategyResult,
     OllamaAdaptiveRouter,
 )
 from src.experiments.adaptive_routing.ollama_query_analyzer import (
     QueryComplexity,
-    QueryCategory,
     QueryAnalysis,
     OllamaQueryAnalyzer,
 )
@@ -46,12 +44,6 @@ class TestQueryComplexity:
         assert QueryComplexity.COMPLEX.value == "complex"
 
 
-class TestQueryCategory:
-    def test_categories(self):
-        assert QueryCategory.FACTUAL.value == "factual"
-        assert QueryCategory.ANALYTICAL.value == "analytical"
-        assert QueryCategory.COMPARATIVE.value == "comparative"
-
 
 # --- QueryAnalysis dataclass ---
 
@@ -67,7 +59,7 @@ class TestQueryAnalysis:
             characteristics={"word_count": 1},
         )
         assert analysis.complexity_score == 5
-        assert analysis.category is None  # default
+        assert analysis.complexity_level == QueryComplexity.MEDIUM
 
 
 # --- OllamaQueryAnalyzer tests (mocked) ---
@@ -340,21 +332,6 @@ class TestRouterStats:
         stats = router.get_stats()
         assert stats['total_queries_routed'] == 0
 
-    def test_update_stats(self, mock_analyzer):
-        router = OllamaAdaptiveRouter(query_analyzer=mock_analyzer, verbose=False)
-        router._update_stats(RAGStrategy.BASELINE, 2.0, 0.8)
-        assert router.strategy_stats[RAGStrategy.BASELINE]['count'] == 1
-
-    def test_running_average(self, mock_analyzer):
-        router = OllamaAdaptiveRouter(query_analyzer=mock_analyzer, verbose=False)
-        router._update_stats(RAGStrategy.BASELINE, 4.0, 0.9)
-        router._update_stats(RAGStrategy.BASELINE, 6.0, 0.7)
-        stats = router.strategy_stats[RAGStrategy.BASELINE]
-        assert stats['count'] == 2
-        # Running average from initial (3.0, 0.75) -> after (4.0, 0.9) -> after (6.0, 0.7)
-        # First update: avg_latency = (3.0*0 + 4.0)/1 = 4.0
-        # Second update: avg_latency = (4.0*1 + 6.0)/2 = 5.0
-        assert stats['avg_latency'] == 5.0
 
 
 class TestRouterPatternMatch:

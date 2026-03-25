@@ -7,7 +7,7 @@ import hashlib
 import time
 import threading
 from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from collections import OrderedDict
 import logging
 
@@ -80,12 +80,6 @@ class LRUCache:
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self._lock = threading.RLock()
         self.stats = CacheStats()
-
-    def _generate_key(self, data: Any) -> str:
-        """Generate a hash key from data"""
-        if isinstance(data, str):
-            return hashlib.sha256(data.encode()).hexdigest()[:32]
-        return hashlib.sha256(str(data).encode()).hexdigest()[:32]
 
     def get(self, key: str) -> Optional[Any]:
         """
@@ -189,26 +183,23 @@ class SemanticQueryCache:
     """
     Cache for query -> response mappings
 
-    Uses semantic hashing to cache similar queries and their responses.
-    Designed for RAG query results.
+    Uses normalized exact-match hashing (case-insensitive, whitespace-normalized)
+    to cache queries and their responses. Designed for RAG query results.
     """
 
     def __init__(
         self,
         capacity: int = 500,
         ttl: float = 3600,  # 1 hour default
-        similarity_threshold: float = 0.95
     ):
         """
-        Initialize semantic query cache
+        Initialize query cache
 
         Args:
             capacity: Maximum cached queries
             ttl: Default TTL in seconds
-            similarity_threshold: Threshold for considering queries similar
         """
         self._cache = LRUCache(capacity=capacity, default_ttl=ttl)
-        self.similarity_threshold = similarity_threshold
 
     def _normalize_query(self, query: str) -> str:
         """Normalize query for consistent hashing"""
@@ -273,6 +264,10 @@ class SemanticQueryCache:
         """Get cache statistics"""
         return self._cache.stats
 
+    def cleanup_expired(self) -> int:
+        """Remove expired entries"""
+        return self._cache.cleanup_expired()
+
     def clear(self) -> None:
         """Clear the cache"""
         self._cache.clear()
@@ -303,7 +298,7 @@ class VectorSearchCache:
 
     def _search_key(self, query: str, k: int, filter_criteria: Dict = None) -> str:
         """Generate key for a search query"""
-        key_parts = [query.lower().strip(), str(k)]
+        key_parts = [" ".join(query.lower().strip().split()), str(k)]
         if filter_criteria:
             key_parts.append(str(sorted(filter_criteria.items())))
         return hashlib.sha256("|".join(key_parts).encode()).hexdigest()[:32]
@@ -365,6 +360,13 @@ class VectorSearchCache:
             "embedding_cache": self._embedding_cache.stats
         }
 
+    def cleanup_expired(self) -> Dict[str, int]:
+        """Remove expired entries from all caches"""
+        return {
+            "search": self._cache.cleanup_expired(),
+            "embeddings": self._embedding_cache.cleanup_expired()
+        }
+
     def clear(self) -> None:
         """Clear all caches"""
         self._cache.clear()
@@ -376,14 +378,12 @@ class RAGCacheManager:
     Unified cache manager for RAG systems
 
     Manages:
-    - Query response cache (SemanticQueryCache)
-    - Vector search cache (VectorSearchCache)
-    - General LRU cache for misc data
+    - Query response cache (normalized exact-match)
+    - Vector search cache (search results + embeddings)
 
     Features:
-    - Automatic cache warming
-    - Background cleanup
-    - Statistics aggregation
+    - Background cleanup of expired entries
+    - Statistics aggregation across all cache layers
     """
 
     def __init__(
@@ -414,8 +414,6 @@ class RAGCacheManager:
             capacity=vector_cache_capacity,
             ttl=vector_cache_ttl
         )
-        self.misc_cache = LRUCache(capacity=200, default_ttl=600)  # 10 min for misc
-
         self._cleanup_thread = None
         self._stop_cleanup = threading.Event()
 
@@ -433,11 +431,11 @@ class RAGCacheManager:
 
     def _cleanup_expired(self) -> Dict[str, int]:
         """Cleanup expired entries from all caches"""
+        vector_counts = self.vector_cache.cleanup_expired()
         counts = {
-            "query_cache": self.query_cache._cache.cleanup_expired(),
-            "vector_search": self.vector_cache._cache.cleanup_expired(),
-            "vector_embeddings": self.vector_cache._embedding_cache.cleanup_expired(),
-            "misc_cache": self.misc_cache.cleanup_expired()
+            "query_cache": self.query_cache.cleanup_expired(),
+            "vector_search": vector_counts["search"],
+            "vector_embeddings": vector_counts["embeddings"]
         }
         total = sum(counts.values())
         if total > 0:
@@ -494,19 +492,16 @@ class RAGCacheManager:
                 "search": self.vector_cache.stats["search_cache"].to_dict(),
                 "embedding": self.vector_cache.stats["embedding_cache"].to_dict()
             },
-            "misc_cache": self.misc_cache.stats.to_dict(),
             "summary": {
                 "total_hits": (
                     self.query_cache.stats.hits +
                     self.vector_cache.stats["search_cache"].hits +
-                    self.vector_cache.stats["embedding_cache"].hits +
-                    self.misc_cache.stats.hits
+                    self.vector_cache.stats["embedding_cache"].hits
                 ),
                 "total_misses": (
                     self.query_cache.stats.misses +
                     self.vector_cache.stats["search_cache"].misses +
-                    self.vector_cache.stats["embedding_cache"].misses +
-                    self.misc_cache.stats.misses
+                    self.vector_cache.stats["embedding_cache"].misses
                 )
             }
         }
@@ -523,75 +518,9 @@ class RAGCacheManager:
         """Clear all caches"""
         self.query_cache.clear()
         self.vector_cache.clear()
-        self.misc_cache.clear()
 
     def shutdown(self) -> None:
         """Shutdown the cache manager"""
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             self._stop_cleanup.set()
             self._cleanup_thread.join(timeout=1.0)
-
-
-# Convenience function for quick testing
-def test_caching_system():
-    """Test basic caching functionality"""
-    print("Testing RAG Caching System...")
-
-    # Test LRU Cache
-    print("\n1. Testing LRU Cache...")
-    cache = LRUCache(capacity=3)
-    cache.put("key1", "value1")
-    cache.put("key2", "value2")
-    cache.put("key3", "value3")
-
-    assert cache.get("key1") == "value1"
-    assert cache.size() == 3
-
-    # Test eviction
-    cache.put("key4", "value4")  # Should evict key2 (LRU after accessing key1)
-    assert cache.size() == 3
-    print("   LRU Cache: OK")
-
-    # Test SemanticQueryCache
-    print("\n2. Testing Semantic Query Cache...")
-    query_cache = SemanticQueryCache(capacity=10)
-    query_cache.put("What is machine learning?", "ML is a subset of AI...")
-    result = query_cache.get("What is machine learning?")
-    assert result is not None
-    assert "ML is a subset" in result["response"]
-    print("   Semantic Query Cache: OK")
-
-    # Test VectorSearchCache
-    print("\n3. Testing Vector Search Cache...")
-    vector_cache = VectorSearchCache(capacity=10)
-    vector_cache.put_search_results("test query", 5, [("doc1", 0.9), ("doc2", 0.8)])
-    results = vector_cache.get_search_results("test query", 5)
-    assert results is not None
-    assert len(results) == 2
-    print("   Vector Search Cache: OK")
-
-    # Test RAGCacheManager
-    print("\n4. Testing RAG Cache Manager...")
-    manager = RAGCacheManager(enable_auto_cleanup=False)
-
-    manager.cache_query_response(
-        query="What is Python?",
-        response="Python is a programming language...",
-        strategy="baseline"
-    )
-
-    cached = manager.get_query_response("What is Python?")
-    assert cached is not None
-    assert "programming language" in cached["response"]
-
-    stats = manager.get_stats()
-    assert stats["query_cache"]["hits"] == 1
-    print("   RAG Cache Manager: OK")
-
-    print("\n" + "=" * 50)
-    print("All caching tests passed!")
-    print("=" * 50)
-
-
-if __name__ == "__main__":
-    test_caching_system()

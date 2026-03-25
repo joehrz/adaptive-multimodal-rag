@@ -27,10 +27,8 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
-    import fitz # PyMuPDF
     import ollama
     from src.ocr.advanced_ocr_engine import AdvancedOCREngine, OCRResult, OCREngine
-    from langchain.schema import Document
 except ImportError as e:
     print(f"Missing dependencies: {e}")
     print("Install required packages first")

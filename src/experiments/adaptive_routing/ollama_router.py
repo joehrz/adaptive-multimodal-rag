@@ -5,7 +5,7 @@ Routes queries to optimal RAG strategy based on complexity
 
 import time
 import logging
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -35,16 +35,6 @@ class RoutingDecision:
     expected_quality: float # Estimated score 0-1
     routing_time: float
 
-@dataclass
-class StrategyResult:
-    """Result from executing a strategy"""
-    strategy: RAGStrategy
-    answer: str
-    retrieved_docs: List[str]
-    actual_latency: float
-    quality_score: float
-    metadata: Dict
-
 class OllamaAdaptiveRouter:
     """
     Intelligent query router that selects optimal RAG strategy
@@ -58,23 +48,19 @@ class OllamaAdaptiveRouter:
 
     def __init__(self,
                  query_analyzer: Optional[OllamaQueryAnalyzer] = None,
-                 enable_learning: bool = True,
                  verbose: bool = True):
         """
         Initialize adaptive router
 
         Args:
             query_analyzer: Query complexity analyzer
-            enable_learning: Track performance and adapt routing
             verbose: Enable verbose logging
         """
 
         self.query_analyzer = query_analyzer or OllamaQueryAnalyzer(verbose=False)
-        self.enable_learning = enable_learning
         self.verbose = verbose
 
         # Performance tracking
-        self.routing_history = []
         self.strategy_stats = {
             RAGStrategy.BASELINE: {'count': 0, 'avg_latency': 3.0, 'avg_quality': 0.75},
             RAGStrategy.HYDE: {'count': 0, 'avg_latency': 35.0, 'avg_quality': 0.85},
@@ -151,16 +137,11 @@ class OllamaAdaptiveRouter:
                          'how does .* affect', 'how do .* interact',
                          'what leads to', 'cause of', 'impact of .* on']
 
-        # Use regex-like matching for more specific patterns
         query_lower = query.lower()
         needs_graphrag = (
             not is_summarization and  # Never use GraphRAG for summarization
             analysis.complexity_score >= 6 and  # Higher threshold for GraphRAG
-            any(
-                keyword in query_lower if ' ' not in keyword.replace('.*', ' ')
-                else self._pattern_match(keyword, query_lower)
-                for keyword in graph_keywords
-            )
+            any(self._pattern_match(keyword, query_lower) for keyword in graph_keywords)
         )
 
         if needs_multimodal:
@@ -226,77 +207,6 @@ class OllamaAdaptiveRouter:
 
         return decision
 
-    def execute_strategy(self,
-                         decision: RoutingDecision,
-                         rag_systems: Dict[RAGStrategy, any]) -> StrategyResult:
-        """
-        Execute the selected RAG strategy
-
-        Args:
-            decision: Routing decision
-            rag_systems: Dictionary mapping strategies to RAG system instances
-
-        Returns:
-            StrategyResult with answer and metrics
-        """
-        strategy = decision.selected_strategy
-        start_time = time.time()
-
-        if strategy not in rag_systems:
-            raise ValueError(f"RAG system not provided for strategy: {strategy.value}")
-
-        rag_system = rag_systems[strategy]
-
-        # Execute query (implementation depends on RAG system interface)
-        # This is a placeholder - actual implementation depends on your RAG classes
-        try:
-            if hasattr(rag_system, 'query'):
-                answer = rag_system.query(decision.query)
-                retrieved_docs = []
-                quality_score = 0.8 # Placeholder
-            elif hasattr(rag_system, 'retrieve'):
-                result = rag_system.retrieve(decision.query)
-                answer = "Generated answer placeholder"
-                retrieved_docs = [doc.page_content for doc in result.documents]
-                quality_score = 0.8
-            else:
-                raise ValueError(f"RAG system doesn't have query() or retrieve() method")
-
-        except Exception as e:
-            logger.error(f"Error executing strategy {strategy.value}: {e}")
-            raise
-
-        actual_latency = time.time() - start_time
-
-        # Update statistics if learning enabled
-        if self.enable_learning:
-            self._update_stats(strategy, actual_latency, quality_score)
-
-        result = StrategyResult(
-            strategy=strategy,
-            answer=answer if isinstance(answer, str) else str(answer),
-            retrieved_docs=retrieved_docs,
-            actual_latency=actual_latency,
-            quality_score=quality_score,
-            metadata={
-                'expected_latency': decision.expected_latency,
-                'latency_error': actual_latency - decision.expected_latency,
-                'complexity_score': decision.complexity_score
-            }
-        )
-
-        return result
-
-    def _update_stats(self, strategy: RAGStrategy, latency: float, quality: float):
-        """Update strategy performance statistics"""
-        stats = self.strategy_stats[strategy]
-
-        # Running average
-        count = stats['count']
-        stats['avg_latency'] = (stats['avg_latency'] * count + latency) / (count + 1)
-        stats['avg_quality'] = (stats['avg_quality'] * count + quality) / (count + 1)
-        stats['count'] += 1
-
     def get_stats(self) -> Dict:
         """Get routing statistics"""
         total_queries = sum(s['count'] for s in self.strategy_stats.values())
@@ -318,25 +228,6 @@ class OllamaAdaptiveRouter:
         }
 
         return stats
-
-    def optimize_routing_rules(self):
-        """
-        Analyze routing history and optimize rules (placeholder for future ML)
-        """
-        if not self.enable_learning:
-            return
-
-        # Placeholder for future: use routing history to adjust thresholds
-        # For now, just log statistics
-        if self.verbose:
-            stats = self.get_stats()
-            print("\n[ROUTING OPTIMIZATION]")
-            print(f"Total queries: {stats['total_queries_routed']}")
-            for strategy in RAGStrategy:
-                perf = stats['strategy_performance'][strategy.value]
-                print(f"  {strategy.value}: {perf['usage_count']} queries, "
-                      f"{perf['avg_latency']:.1f}s avg, "
-                      f"{perf['avg_quality']:.2f} quality")
 
 
 # Testing

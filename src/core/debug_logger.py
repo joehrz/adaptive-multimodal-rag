@@ -15,17 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class RetrievedDocument:
-    """Captured retrieved document info"""
-    rank: int
-    source: str
-    content_preview: str  # First N characters
-    content_length: int
-    score: Optional[float] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class DebugEntry:
     """Single debug log entry for one query"""
     # Metadata

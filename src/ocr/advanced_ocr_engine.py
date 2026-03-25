@@ -1,13 +1,11 @@
 """
-Advanced OCR Engine with Multiple Backends and Intelligent Fallback
+Advanced OCR Engine with Multiple Backends and Fallback Chain
 Supports: EasyOCR, PaddleOCR, TrOCR, Tesseract with confidence-based selection
 
 Features:
 - Multiple OCR engine integration with fallback chain
 - Confidence-based engine selection
 - Text preprocessing and post-processing
-- Layout analysis and region detection
-- Performance optimization and caching
 - Error handling and graceful degradation
 """
 
@@ -20,9 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 from pathlib import Path
-import base64
 from PIL import Image
-import io
 
 # OCR Engine imports (with fallbacks)
 try:
@@ -67,15 +63,6 @@ class OCRResult:
     processing_time: float
     engine: OCREngine
     metadata: Dict[str, Any]
-
-@dataclass
-class TextRegion:
-    """Detected text region with properties"""
-    bbox: Tuple[int, int, int, int]
-    text: str
-    confidence: float
-    region_type: str  # 'title', 'body', 'caption', 'equation'
-    font_size: Optional[float] = None
 
 class AdvancedOCREngine:
     """
@@ -234,26 +221,16 @@ class AdvancedOCREngine:
             # Remove excessive whitespace
             cleaned = ' '.join(text.split())
 
-            # Fix common OCR errors for technical text
+            # Fix common OCR misrecognitions in technical text
             replacements = {
-                # Common character confusions
-                '0': 'O',  # Only in certain contexts
-                'l': 'I',  # In uppercase contexts
-                '1': 'l',  # In lowercase contexts
-                # Mathematical symbols
-                'x': 'x',  # Multiplication
-                'infinity': 'infinity',
-                # Common technical terms
                 'atlention': 'attention',
                 'transformcr': 'transformer',
                 'encodcr': 'encoder',
-                'decodcr': 'decoder'
+                'decodcr': 'decoder',
             }
 
-            # Apply corrections carefully (context-aware)
             for old, new in replacements.items():
-                # Only replace if it improves readability
-                if old in cleaned and len(old) > 1:
+                if old in cleaned:
                     cleaned = cleaned.replace(old, new)
 
             # Remove artifacts from specific engines

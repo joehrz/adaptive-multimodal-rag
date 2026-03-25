@@ -12,8 +12,8 @@ import time
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Any, Iterator, Tuple, TYPE_CHECKING
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
+from dataclasses import dataclass
 from enum import Enum
 
 try:
@@ -712,74 +712,6 @@ REASONING: [brief explanation]"""
 
         return result
 
-    def stream_reflection(
-        self,
-        query: str,
-        answer: str,
-        documents: List[Document]
-    ) -> Iterator[Dict[str, Any]]:
-        """
-        Stream reflection tokens for UI display
-
-        Args:
-            query: Original query
-            answer: Generated answer
-            documents: Retrieved documents
-
-        Yields:
-            Dict with reflection stage and result
-        """
-        yield {"stage": "start", "message": "Starting reflection assessment..."}
-
-        # Relevance
-        yield {"stage": "relevance", "status": "in_progress", "message": "Assessing document relevance..."}
-        relevance, relevance_reasoning = self._assess_relevance(query, documents)
-        yield {
-            "stage": "relevance",
-            "status": "complete",
-            "token": relevance.value,
-            "score": relevance.score,
-            "reasoning": relevance_reasoning
-        }
-
-        # Support
-        yield {"stage": "support", "status": "in_progress", "message": "Assessing answer support..."}
-        support, support_reasoning = self._assess_support(answer, documents)
-        yield {
-            "stage": "support",
-            "status": "complete",
-            "token": support.value,
-            "score": support.score,
-            "reasoning": support_reasoning
-        }
-
-        # Utility
-        yield {"stage": "utility", "status": "in_progress", "message": "Assessing answer utility..."}
-        utility, utility_reasoning = self._assess_utility(query, answer)
-        yield {
-            "stage": "utility",
-            "status": "complete",
-            "token": utility.value,
-            "score": utility.score,
-            "reasoning": utility_reasoning
-        }
-
-        # Final result
-        result = ReflectionResult(
-            relevance=relevance,
-            support=support,
-            utility=utility,
-            relevance_reasoning=relevance_reasoning,
-            support_reasoning=support_reasoning,
-            utility_reasoning=utility_reasoning
-        )
-
-        yield {
-            "stage": "complete",
-            "overall_score": result.overall_score,
-            "needs_regeneration": result.needs_regeneration,
-            "summary": result.summary()
-        }
 
 
 def test_self_rag():
