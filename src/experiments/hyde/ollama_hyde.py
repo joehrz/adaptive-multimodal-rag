@@ -260,9 +260,8 @@ Informative passage:"""
                     logger.warning(f"HyDE generation failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in 2s...")
                     time.sleep(2)
                 else:
-                    error_msg = f"Error generating hypothetical document after {max_retries} attempts: {last_error}"
-                    logger.error(error_msg)
-                    return error_msg
+                    logger.error(f"Error generating hypothetical document after {max_retries} attempts: {last_error}")
+                    raise RuntimeError(f"HyDE hypothetical generation failed after {max_retries} attempts: {last_error}") from last_error
 
     def _retrieve_with_hypothetical(self, hypothetical_doc: str, query: str) -> Tuple[List[Document], List[Document]]:
         """
@@ -359,7 +358,7 @@ Informative passage:"""
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in summarization_keywords)
 
-    def _generate_answer(self, query: str, context: str, hypothetical: str) -> str:
+    def _generate_answer(self, query: str, context: str, hypothetical: str = None) -> str:
         """Generate final answer using retrieved context with query-type-aware prompts"""
 
         if self._detect_summarization_query(query):
@@ -415,17 +414,25 @@ Answer:"""
         if self.verbose:
             logger.info("[Step 1] Generating hypothetical document...")
         hyde_start = time.time()
-        hypothetical_doc = self._generate_hypothetical_document(question)
+        try:
+            hypothetical_doc = self._generate_hypothetical_document(question)
+        except RuntimeError as e:
+            logger.warning(f"HyDE generation failed, falling back to standard retrieval: {e}")
+            hypothetical_doc = None
         hyde_time = time.time() - hyde_start
 
-        if self.verbose:
+        if hypothetical_doc and self.verbose:
             logger.info(f"  Generated ({hyde_time:.1f}s): {hypothetical_doc[:100]}...")
 
         # Step 2: Retrieve using both hypothetical and standard
         if self.verbose:
             logger.info("[Step 2] Retrieving documents...")
         retrieval_start = time.time()
-        hyde_docs, standard_docs = self._retrieve_with_hypothetical(hypothetical_doc, question)
+        if hypothetical_doc:
+            hyde_docs, standard_docs = self._retrieve_with_hypothetical(hypothetical_doc, question)
+        else:
+            hyde_docs = []
+            standard_docs = self.vector_store.similarity_search(question, k=self.k_retrieval) if self.vector_store else []
         retrieval_time = time.time() - retrieval_start
 
         if self.verbose:
@@ -461,7 +468,7 @@ Answer:"""
 
         result = HyDEResult(
             query=question,
-            hypothetical_document=hypothetical_doc,
+            hypothetical_document=hypothetical_doc or "(generation failed - used standard retrieval)",
             answer=answer,
             retrieved_docs=combined_docs,
             hyde_retrieval_count=len(hyde_docs),
@@ -555,37 +562,6 @@ Answer:"""
             logger.info(f"HyDE RETRIEVAL COMPLETE: {len(documents)} docs in {total_time:.1f}s")
 
         return result
-
-    def query_compare(self, question: str) -> Dict[str, Any]:
-        """
-        Compare HyDE retrieval vs standard retrieval.
-        Useful for evaluating HyDE effectiveness.
-        """
-        # Get HyDE result
-        hyde_result = self.query(question)
-
-        # Get standard retrieval result (without HyDE)
-        if self.vector_store:
-            standard_docs = self.vector_store.similarity_search(question, k=self.k_retrieval)
-            standard_context = "\n\n".join([
-                f"Document {i+1}: {doc.page_content[:800]}"
-                for i, doc in enumerate(standard_docs[:5])
-            ])
-
-            standard_answer = self._generate_answer(question, standard_context, "")
-        else:
-            standard_docs = []
-            standard_answer = "No documents available"
-
-        return {
-            "query": question,
-            "hyde_answer": hyde_result.answer,
-            "standard_answer": standard_answer,
-            "hyde_docs_count": len(hyde_result.retrieved_docs),
-            "standard_docs_count": len(standard_docs),
-            "hypothetical_document": hyde_result.hypothetical_document,
-            "hyde_time": hyde_result.total_time
-        }
 
     def clear_vector_store(self) -> bool:
         """Clear the vector store"""

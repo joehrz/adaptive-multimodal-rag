@@ -428,11 +428,11 @@ class TestGenerateResponse:
         assert result == "Success on retry"
         assert mock_ollama.generate.call_count == 2
 
-    def test_returns_error_after_max_retries(self, rag_instance, mock_ollama):
+    def test_raises_after_max_retries(self, rag_instance, mock_ollama):
         mock_ollama.generate.side_effect = Exception("Persistent error")
         with patch('src.core.ollama_rag.time.sleep'):  # skip actual sleep
-            result = rag_instance._generate_response("test query")
-        assert "Error generating response after 3 attempts" in result
+            with pytest.raises(RuntimeError, match="LLM generation failed after 3 attempts"):
+                rag_instance._generate_response("test query")
         assert mock_ollama.generate.call_count == 3
 
     def test_no_context_generates_without_context_section(self, rag_instance, mock_ollama):

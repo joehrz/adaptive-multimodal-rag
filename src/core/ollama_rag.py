@@ -351,11 +351,18 @@ class OllamaRAG:
         metadata_keywords = [
             'title of', 'paper title', 'what is the title',
             'who wrote', 'who are the authors', 'authors of',
-            'when was .* published', 'publication date', 'year of publication',
-            'which journal', 'which conference', 'where was .* published',
+            'publication date', 'year of publication',
+            'which journal', 'which conference',
+        ]
+        metadata_patterns = [
+            r'when was .* published',
+            r'where was .* published',
         ]
         query_lower = query.lower()
-        return any(kw in query_lower for kw in metadata_keywords)
+        if any(kw in query_lower for kw in metadata_keywords):
+            return True
+        import re
+        return any(re.search(pat, query_lower) for pat in metadata_patterns)
 
     def _retrieve_first_pages(self, num_pages: int = 2) -> List[Document]:
         """Retrieve chunks from the first pages of uploaded documents (for metadata queries)"""
@@ -504,8 +511,16 @@ class OllamaRAG:
                     logger.info(f"[CACHE HIT] Retrieved {len(cached_results)} documents from cache")
                 # Reconstruct documents from cache
                 docs = []
-                for doc_content, score in cached_results:
-                    docs.append(Document(page_content=doc_content, metadata={"score": score, "source": "cached"}))
+                for item in cached_results:
+                    if isinstance(item, tuple) and len(item) == 3:
+                        doc_content, score, metadata = item
+                    elif isinstance(item, tuple) and len(item) == 2:
+                        doc_content, score = item
+                        metadata = {}
+                    else:
+                        continue
+                    meta = {**metadata, "score": score, "source": "cached"}
+                    docs.append(Document(page_content=doc_content, metadata=meta))
                 return docs
 
         # Cache miss - perform actual search
@@ -541,7 +556,7 @@ class OllamaRAG:
 
         # Cache the deduplicated results
         if self.cache_manager and docs:
-            results_to_cache = [(doc.page_content, 1.0) for doc in docs]
+            results_to_cache = [(doc.page_content, 1.0, doc.metadata) for doc in docs]
             self.cache_manager.cache_search_results(query, self.k_retrieval, results_to_cache)
             if self.verbose:
                 logger.info(f"[CACHE MISS] Cached {len(docs)} unique documents")
@@ -560,14 +575,22 @@ class OllamaRAG:
         Returns:
             List of unique, relevant documents
         """
-        original_k = self.k_retrieval
-        if k is not None:
-            self.k_retrieval = k
-
-        try:
-            return self._retrieve_documents(query)
-        finally:
-            self.k_retrieval = original_k
+        if k is not None and k != self.k_retrieval:
+            # Save and restore to avoid thread-safety issues with shared state
+            # TODO: Refactor _retrieve_documents to accept k as a parameter
+            import threading
+            lock = getattr(self, '_retrieval_lock', None)
+            if lock is None:
+                self._retrieval_lock = threading.Lock()
+                lock = self._retrieval_lock
+            with lock:
+                original_k = self.k_retrieval
+                self.k_retrieval = k
+                try:
+                    return self._retrieve_documents(query)
+                finally:
+                    self.k_retrieval = original_k
+        return self._retrieve_documents(query)
 
     def _detect_summarization_query(self, query: str) -> bool:
         """Detect if query is asking for a summary or overview"""
@@ -700,9 +723,8 @@ Answer:"""
                     logger.warning(f"Ollama API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                 else:
-                    error_msg = f"Error generating response after {max_retries} attempts: {last_error}"
-                    logger.error(error_msg)
-                    return error_msg
+                    logger.error(f"Error generating response after {max_retries} attempts: {last_error}")
+                    raise RuntimeError(f"LLM generation failed after {max_retries} attempts: {last_error}") from last_error
 
     def query(self, question: str, use_retrieval: bool = True, bypass_cache: bool = False, conversation_history: list = None) -> str:
         """
@@ -768,7 +790,11 @@ Answer:"""
                 use_retrieval = False
 
         # Generate response
-        answer = self._generate_response(question, context, conversation_history=conversation_history)
+        try:
+            answer = self._generate_response(question, context, conversation_history=conversation_history)
+        except RuntimeError as e:
+            logger.error(f"Generation failed for query: {question[:60]}...: {e}")
+            return f"I'm sorry, I was unable to generate a response. Please try again. (Error: {e})"
 
         # Cache the response
         if self.cache_manager:
