@@ -7,7 +7,7 @@ Based on "From Local to Global: A Graph RAG Approach to Query-Focused Summarizat
 Features:
 - Entity extraction from documents
 - Relationship identification
-- Community detection (Louvain algorithm)
+- Community detection (greedy modularity)
 - Multi-hop graph traversal for complex queries
 """
 
@@ -355,7 +355,7 @@ Identify 2-{self.max_relationships_per_doc} key relationships:"""
         return relationships
 
     def _detect_communities(self) -> None:
-        """Detect communities using Louvain algorithm (simplified version)"""
+        """Detect communities using greedy modularity algorithm"""
         if len(self.graph.nodes()) < 2:
             return
 
