@@ -41,7 +41,7 @@ jobs:
         run: python tests/test_config_validation.py
 
       - name: Run pytest
-        run: pytest tests/ -v --tb=short -k "not ollama and not self_rag and not graph" || true
+        run: pytest tests/ -v --tb=short
 
   lint:
     runs-on: ubuntu-latest
