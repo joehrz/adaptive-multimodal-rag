@@ -10,7 +10,6 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Optional
 import json
 
 # Ensure project root is in path for imports
@@ -26,12 +25,12 @@ from src.experiments.adaptive_routing.ollama_query_analyzer import OllamaQueryAn
 from src.experiments.streaming.ollama_streaming_rag import OllamaStreamingRAG
 from src.core.ollama_rag import OllamaRAG
 from src.core.caching_system import RAGCacheManager
-from src.core.config import get_config, reload_config
-from src.core.debug_logger import DebugLogger, get_debug_logger, init_debug_logger
+from src.core.config import get_config
+from src.core.debug_logger import init_debug_logger
 
 # Import Self-RAG and GraphRAG
 try:
-    from src.experiments.self_reflection.ollama_self_rag import OllamaSelfRAG, ReflectionResult
+    from src.experiments.self_reflection.ollama_self_rag import OllamaSelfRAG
     SELF_RAG_AVAILABLE = True
 except ImportError:
     SELF_RAG_AVAILABLE = False
@@ -51,7 +50,7 @@ except ImportError:
 # Page configuration
 st.set_page_config(
     page_title="Adaptive RAG System",
-    page_icon="robot",
+    page_icon="\U0001F916",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -242,7 +241,11 @@ def reset_vector_database():
                 st.session_state.base_rag.documents = []
 
         # Also manually ensure persist directory is cleared (belt and suspenders)
-        persist_dir = "./data/chroma_db_ollama"
+        try:
+            config = get_config()
+            persist_dir = config.vector_db.persist_directory
+        except Exception:
+            persist_dir = "./data/chroma_db_ollama"
         if os.path.exists(persist_dir):
             shutil.rmtree(persist_dir)
 
@@ -962,7 +965,7 @@ def main():
 - Real-time Streaming
 - GraphRAG (Knowledge Graphs)
 
-**Model:** Qwen 2.5 14B (Local)
+**Model:** {st.session_state.get('selected_model', 'Local Ollama')}
 **Cost:** $0.00 (No API fees)
 **Privacy:** Complete (All local)
             """)

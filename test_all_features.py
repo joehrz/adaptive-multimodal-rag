@@ -346,8 +346,9 @@ def test_router(skip_ollama: bool = False):
 
         for query, expected_strategy, description in test_queries:
             decision = router.route_query(query)
-            print_result(f"Routing: {description}", True,
-                        f"'{query[:30]}...' -> {decision.selected_strategy.value}")
+            matched = decision.selected_strategy == expected_strategy
+            print_result(f"Routing: {description}", matched,
+                        f"'{query[:30]}...' -> {decision.selected_strategy.value} (expected {expected_strategy.value})")
 
         return True
 
@@ -370,7 +371,7 @@ def load_pdf_document(pdf_path: str) -> list:
         full_text = ""
         for page_num, page in enumerate(reader.pages, 1):
             page_text = page.extract_text()
-            if page_text.strip():
+            if page_text and page_text.strip():
                 full_text += f"\n\n--- Page {page_num} ---\n{page_text}"
 
         if full_text.strip():

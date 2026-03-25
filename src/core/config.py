@@ -351,7 +351,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
             device=_get_nested_value(config_dict, 'reranker.device', 'cpu'),
             top_k=int(_get_nested_value(config_dict, 'reranker.top_k', 10)),
             candidates=int(_get_nested_value(config_dict, 'reranker.candidates', 30)),
-            min_score=float(_get_nested_value(config_dict, 'reranker.min_score', 0.0)),
+            min_score=float(_get_nested_value(config_dict, 'reranker.min_score', 5.0)),
         ),
         documents=DocumentsConfig(
             chunk_size=int(_get_nested_value(config_dict, 'documents.chunk_size', 1000)),

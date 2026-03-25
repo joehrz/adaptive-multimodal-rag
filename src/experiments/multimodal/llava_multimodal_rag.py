@@ -19,8 +19,6 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import base64
-import io
-import json
 import numpy as np
 import cv2
 from dataclasses import dataclass
@@ -97,7 +95,6 @@ class LLaVAMultimodalRAG:
     def __init__(
         self,
         llava_model: str = "llava:34b",
-        use_caching: bool = True,
         verbose: bool = True,
         use_hybrid: bool = True,
         debug_mode: bool = False
@@ -107,7 +104,6 @@ class LLaVAMultimodalRAG:
 
         Args:
             llava_model: LLaVA model to use (llava:7b, llava:13b, llava:34b)
-            use_caching: Enable caching for faster repeated queries
             verbose: Print progress messages
             use_hybrid: Use enhanced hybrid OCR + LLaVA processing
             debug_mode: Enable comprehensive debugging
@@ -146,7 +142,6 @@ class LLaVAMultimodalRAG:
             print("Enhanced Multimodal RAG Initialized")
             print(f"{'='*60}")
             print(f"Vision Model: {llava_model}")
-            print(f"Caching: {'Enabled' if use_caching else 'Disabled'}")
             print(f"Hybrid OCR+LLaVA: {'Enabled' if self.use_hybrid else 'Disabled'}")
             print(f"Debug Mode: {'Enabled' if debug_mode else 'Disabled'}")
             print(f"{'='*60}\n")
@@ -160,7 +155,8 @@ class LLaVAMultimodalRAG:
         """Check if LLaVA model is available in Ollama"""
         try:
             models = ollama.list()
-            model_names = [m['name'] for m in models.get('models', [])]
+            model_list = models.get('models', []) if isinstance(models, dict) else getattr(models, 'models', [])
+            model_names = [m.get('name', '') if isinstance(m, dict) else getattr(m, 'model', '') for m in model_list]
 
             if not any(self.llava_model in name for name in model_names):
                 print(f"\nWARNING: {self.llava_model} not found in Ollama")

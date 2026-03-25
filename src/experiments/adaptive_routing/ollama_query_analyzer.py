@@ -34,15 +34,6 @@ class QueryComplexity(Enum):
     MEDIUM = "medium" # 4-7: Requires explanation or context
     COMPLEX = "complex" # 8-10: Multi-faceted, comparison, analysis
 
-class QueryCategory(Enum):
-    """Query category types for routing"""
-    FACTUAL = "factual"
-    CREATIVE = "creative"
-    PROCEDURAL = "procedural"
-    ANALYTICAL = "analytical"
-    RESEARCH = "research"
-    COMPARATIVE = "comparative"
-
 @dataclass
 class QueryAnalysis:
     """Result of query analysis"""
@@ -53,7 +44,6 @@ class QueryAnalysis:
     confidence: float
     analysis_time: float
     characteristics: Dict[str, Any]
-    category: 'QueryCategory' = None  # Query category for routing
 
 class OllamaQueryAnalyzer:
     """
@@ -141,7 +131,7 @@ class OllamaQueryAnalyzer:
 
         # Combine heuristic and LLM scores (weighted average)
         heuristic_score = characteristics['heuristic_score']
-        final_score = int(0.3 * heuristic_score + 0.7 * llm_score)
+        final_score = round(0.3 * heuristic_score + 0.7 * llm_score)
 
         # Determine complexity level
         if final_score <= 3:

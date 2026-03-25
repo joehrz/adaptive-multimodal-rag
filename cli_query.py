@@ -26,7 +26,7 @@ import time
 import glob
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -170,9 +170,12 @@ def print_verification(result: dict):
     print_section("RAG Answer (with documents)", result["answer_with_retrieval"])
     print_section("LLM-Only Answer (no documents)", result["answer_without_retrieval"])
 
-    notes = result.get("verification_notes", "")
+    notes = result.get("verification_notes", [])
     if notes:
-        print_section("Verification", notes)
+        if isinstance(notes, list):
+            print_section("Verification", "\n".join(f"  - {note}" for note in notes))
+        else:
+            print_section("Verification", notes)
 
     docs = result.get("retrieved_docs", [])
     if docs:
@@ -302,9 +305,12 @@ class CLIQueryEngine:
             answer = result if isinstance(result, str) else result.get("answer", str(result))
 
         elif strategy == RAGStrategy.HYDE_SELF_RAG and self.hyde_rag and self.self_rag:
-            hyde_result = self.hyde_rag.query(question)
-            hyde_answer = hyde_result if isinstance(hyde_result, str) else hyde_result.get("answer", str(hyde_result))
-            docs = self.rag.retrieve_documents(question, k=5)
+            # Use HyDE for better retrieval, then Self-RAG for quality-checked generation
+            try:
+                hyde_retrieval = self.hyde_rag.retrieve_with_hyde(question)
+                docs = hyde_retrieval.retrieved_docs if hyde_retrieval.retrieved_docs else self.rag.retrieve_documents(question, k=5)
+            except Exception:
+                docs = self.rag.retrieve_documents(question, k=5)
             result = self.self_rag.query_with_reflection(question, docs)
             answer = result if isinstance(result, str) else result.get("answer", str(result))
 

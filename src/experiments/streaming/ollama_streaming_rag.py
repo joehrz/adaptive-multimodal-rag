@@ -504,7 +504,7 @@ Analysis Document:"""
 
             if hyde_engine is None or vector_store is None:
                 # Fall back to streaming HyDE generation (text-based, no embedding retrieval)
-                for chunk in self.stream_hyde_generation(query, documents=documents, on_token=on_token):
+                for chunk in self.stream_hyde_generation(query, documents=documents, on_token=on_token, on_progress=on_progress):
                     hyde_tokens.append(chunk.content)
                     yield chunk
 
