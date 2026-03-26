@@ -110,7 +110,7 @@ src/
 │   ├── hyde/                   # HyDE implementation
 │   └── multimodal/             # LLaVA vision processing
 └── ocr/
-    └── advanced_ocr_engine.py  # Multi-backend OCR (EasyOCR, Tesseract)
+    └── advanced_ocr_engine.py  # Multi-backend OCR (EasyOCR, PaddleOCR, TrOCR, Tesseract)
 ```
 
 ## Setup

@@ -308,7 +308,7 @@ class CLIQueryEngine:
             # Use HyDE for better retrieval, then Self-RAG for quality-checked generation
             try:
                 hyde_retrieval = self.hyde_rag.retrieve_with_hyde(question)
-                docs = hyde_retrieval.retrieved_docs if hyde_retrieval.retrieved_docs else self.rag.retrieve_documents(question, k=5)
+                docs = hyde_retrieval.documents if hyde_retrieval.documents else self.rag.retrieve_documents(question, k=5)
             except Exception:
                 docs = self.rag.retrieve_documents(question, k=5)
             result = self.self_rag.query_with_reflection(question, docs)

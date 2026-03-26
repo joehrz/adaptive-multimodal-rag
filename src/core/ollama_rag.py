@@ -459,8 +459,9 @@ class OllamaRAG:
             logger.warning(f"Reranking failed: {e}. Falling back to original order.")
             return documents[:top_k]
 
-    def _retrieve_documents(self, query: str, bypass_cache: bool = False) -> List[Document]:
+    def _retrieve_documents(self, query: str, k: int = None, bypass_cache: bool = False) -> List[Document]:
         """Retrieve relevant documents with caching, deduplication, and smart query detection"""
+        k = k if k is not None else self.k_retrieval
 
         if not self.vector_store:
             if self.verbose:
@@ -474,9 +475,9 @@ class OllamaRAG:
             first_pages = self._retrieve_first_pages()
             if first_pages:
                 # Also do semantic search and merge
-                semantic_docs = self.vector_store.similarity_search(query, k=self.k_retrieval)
+                semantic_docs = self.vector_store.similarity_search(query, k=k)
                 all_docs = first_pages + semantic_docs
-                return self._deduplicate_documents(all_docs)[:self.k_retrieval]
+                return self._deduplicate_documents(all_docs)[:k]
 
         # Check if this is a page-specific query
         page_num = self._detect_page_query(query)
@@ -488,11 +489,11 @@ class OllamaRAG:
             try:
                 docs = self.vector_store.similarity_search(
                     query,
-                    k=self.k_retrieval * 3,  # Retrieve more to account for duplicates
+                    k=k * 3,  # Retrieve more to account for duplicates
                     filter={"page": page_num}
                 )
                 if docs:
-                    docs = self._deduplicate_documents(docs)[:self.k_retrieval]
+                    docs = self._deduplicate_documents(docs)[:k]
                     if self.verbose:
                         logger.info(f"[PAGE FILTER] Found {len(docs)} unique documents for page {page_num}")
                     return docs
@@ -505,7 +506,7 @@ class OllamaRAG:
 
         # Check cache for search results
         if self.cache_manager and not bypass_cache:
-            cached_results = self.cache_manager.get_search_results(query, self.k_retrieval)
+            cached_results = self.cache_manager.get_search_results(query, k)
             if cached_results:
                 if self.verbose:
                     logger.info(f"[CACHE HIT] Retrieved {len(cached_results)} documents from cache")
@@ -526,16 +527,16 @@ class OllamaRAG:
         # Cache miss - perform actual search
         # When reranker is active, fetch more candidates for it to score
         if self.reranker:
-            raw_k = max(self.reranker_candidates, self.k_retrieval * 3)
+            raw_k = max(self.reranker_candidates, k * 3)
         else:
-            raw_k = self.k_retrieval * 3
+            raw_k = k * 3
         raw_docs = self.vector_store.similarity_search(query, k=raw_k)
 
         if self.verbose:
             logger.info(f"[RETRIEVAL] Semantic search returned {len(raw_docs)} documents")
 
         # Supplement with keyword-based retrieval to catch chunks semantic search misses
-        keyword_docs = self._keyword_search(query, k=self.k_retrieval)
+        keyword_docs = self._keyword_search(query, k=k)
         if keyword_docs:
             raw_docs = raw_docs + keyword_docs
             if self.verbose:
@@ -548,7 +549,7 @@ class OllamaRAG:
         if self.reranker and len(docs) > 1:
             docs = self._rerank(query, docs, top_k=self.reranker_top_k)
         else:
-            docs = docs[:self.k_retrieval]
+            docs = docs[:k]
 
         if self.verbose:
             logger.info(f"[RETRIEVAL] Returning {len(docs)} documents" +
@@ -557,7 +558,7 @@ class OllamaRAG:
         # Cache the deduplicated results
         if self.cache_manager and docs:
             results_to_cache = [(doc.page_content, 1.0, doc.metadata) for doc in docs]
-            self.cache_manager.cache_search_results(query, self.k_retrieval, results_to_cache)
+            self.cache_manager.cache_search_results(query, k, results_to_cache)
             if self.verbose:
                 logger.info(f"[CACHE MISS] Cached {len(docs)} unique documents")
 
@@ -575,22 +576,7 @@ class OllamaRAG:
         Returns:
             List of unique, relevant documents
         """
-        if k is not None and k != self.k_retrieval:
-            # Save and restore to avoid thread-safety issues with shared state
-            # TODO: Refactor _retrieve_documents to accept k as a parameter
-            import threading
-            lock = getattr(self, '_retrieval_lock', None)
-            if lock is None:
-                self._retrieval_lock = threading.Lock()
-                lock = self._retrieval_lock
-            with lock:
-                original_k = self.k_retrieval
-                self.k_retrieval = k
-                try:
-                    return self._retrieve_documents(query)
-                finally:
-                    self.k_retrieval = original_k
-        return self._retrieve_documents(query)
+        return self._retrieve_documents(query, k=k)
 
     def _detect_summarization_query(self, query: str) -> bool:
         """Detect if query is asking for a summary or overview"""

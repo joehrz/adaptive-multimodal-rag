@@ -266,6 +266,7 @@ def _apply_env_overrides(config_dict: Dict) -> Dict:
         'RAG_VERBOSE': 'logging.verbose',
         'RAG_OLLAMA_URL': 'ollama.url',
         'RAG_OLLAMA_TIMEOUT': 'ollama.timeout',
+        'RAG_EMBEDDING_BACKEND': 'embeddings.backend',
     }
 
     for env_var, config_path in env_mappings.items():
@@ -285,12 +286,14 @@ def _apply_env_overrides(config_dict: Dict) -> Dict:
             final_key = keys[-1]
             if env_value.lower() in ('true', 'false'):
                 current[final_key] = env_value.lower() == 'true'
-            elif env_value.isdigit():
-                current[final_key] = int(env_value)
-            elif env_value.replace('.', '').isdigit():
-                current[final_key] = float(env_value)
             else:
-                current[final_key] = env_value
+                try:
+                    if '.' in env_value:
+                        current[final_key] = float(env_value)
+                    else:
+                        current[final_key] = int(env_value)
+                except ValueError:
+                    current[final_key] = env_value
 
     return config_dict
 
