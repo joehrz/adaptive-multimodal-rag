@@ -129,8 +129,8 @@ class TestStreamGenerate:
         mock_response.iter_lines.return_value = lines
         mock_response.raise_for_status = MagicMock()
 
-        with patch('src.experiments.streaming.ollama_streaming_rag.requests.post', return_value=mock_response):
-            chunks = list(rag.stream_generate("test prompt"))
+        rag._session.post = MagicMock(return_value=mock_response)
+        chunks = list(rag.stream_generate("test prompt"))
 
         assert len(chunks) == 3
         assert chunks[0].content == "Hello"
@@ -152,8 +152,8 @@ class TestStreamGenerate:
         mock_response.raise_for_status = MagicMock()
 
         tokens = []
-        with patch('src.experiments.streaming.ollama_streaming_rag.requests.post', return_value=mock_response):
-            list(rag.stream_generate("prompt", on_token=lambda t: tokens.append(t)))
+        rag._session.post = MagicMock(return_value=mock_response)
+        list(rag.stream_generate("prompt", on_token=lambda t: tokens.append(t)))
 
         assert tokens == ["tok"]
 
@@ -162,9 +162,8 @@ class TestStreamGenerate:
         with patch('src.experiments.streaming.ollama_streaming_rag.CONFIG_AVAILABLE', False):
             rag = OllamaStreamingRAG(model="test", verbose=False)
 
-        with patch('src.experiments.streaming.ollama_streaming_rag.requests.post',
-                   side_effect=req.RequestException("connection refused")):
-            chunks = list(rag.stream_generate("prompt"))
+        rag._session.post = MagicMock(side_effect=req.RequestException("connection refused"))
+        chunks = list(rag.stream_generate("prompt"))
 
         assert len(chunks) == 1
         assert "error" in chunks[0].metadata
@@ -184,11 +183,11 @@ class TestStreamRAGQuery:
 
         docs = [Document(page_content="test content", metadata={"source": "test"})]
 
-        with patch('src.experiments.streaming.ollama_streaming_rag.requests.post', return_value=mock_response) as mock_post:
-            chunks = list(rag.stream_rag_query("question?", docs))
+        rag._session.post = MagicMock(return_value=mock_response)
+        chunks = list(rag.stream_rag_query("question?", docs))
 
         # Verify the prompt includes document content
-        call_args = mock_post.call_args
+        call_args = rag._session.post.call_args
         prompt = call_args[1]["json"]["prompt"] if "json" in call_args[1] else call_args[0][1]["prompt"]
         assert "test content" in prompt
 

@@ -140,9 +140,12 @@ class OllamaRAG:
             self.reranker_candidates = 30
             self.reranker_min_score = 5.0
 
+        # Create Ollama client with timeout
+        self._ollama_client = ollama.Client(timeout=self.timeout)
+
         # Test Ollama connection
         try:
-            available_models = ollama.list()
+            available_models = self._ollama_client.list()
             model_names = [m.model for m in available_models.models]
 
             if self.model not in model_names:
@@ -683,7 +686,7 @@ Answer:"""
 
                 start_time = time.time()
 
-                response = ollama.generate(
+                response = self._ollama_client.generate(
                     model=self.model,
                     prompt=prompt,
                     options={

@@ -210,7 +210,7 @@ class SemanticQueryCache:
     def _query_hash(self, query: str) -> str:
         """Generate hash for a query"""
         normalized = self._normalize_query(query)
-        return hashlib.sha256(normalized.encode()).hexdigest()[:32]
+        return hashlib.sha256(normalized.encode()).hexdigest()
 
     def get(self, query: str) -> Optional[Dict[str, Any]]:
         """
@@ -301,7 +301,7 @@ class VectorSearchCache:
         key_parts = [" ".join(query.lower().strip().split()), str(k)]
         if filter_criteria:
             key_parts.append(str(sorted(filter_criteria.items())))
-        return hashlib.sha256("|".join(key_parts).encode()).hexdigest()[:32]
+        return hashlib.sha256("|".join(key_parts).encode()).hexdigest()
 
     def get_search_results(
         self,
@@ -344,12 +344,12 @@ class VectorSearchCache:
 
     def get_embedding(self, text: str) -> Optional[List[float]]:
         """Get cached embedding for text"""
-        key = hashlib.sha256(text.encode()).hexdigest()[:32]
+        key = hashlib.sha256(text.encode()).hexdigest()
         return self._embedding_cache.get(key)
 
     def put_embedding(self, text: str, embedding: List[float]) -> None:
         """Cache embedding for text"""
-        key = hashlib.sha256(text.encode()).hexdigest()[:32]
+        key = hashlib.sha256(text.encode()).hexdigest()
         self._embedding_cache.put(key, embedding)
 
     @property
@@ -520,7 +520,9 @@ class RAGCacheManager:
         self.vector_cache.clear()
 
     def shutdown(self) -> None:
-        """Shutdown the cache manager"""
+        """Shutdown the cache manager, waiting for cleanup to finish"""
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             self._stop_cleanup.set()
-            self._cleanup_thread.join(timeout=1.0)
+            self._cleanup_thread.join(timeout=10.0)
+            if self._cleanup_thread.is_alive():
+                logger.warning("Cache cleanup thread did not stop within timeout")

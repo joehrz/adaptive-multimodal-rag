@@ -288,12 +288,12 @@ def _apply_env_overrides(config_dict: Dict) -> Dict:
                 current[final_key] = env_value.lower() == 'true'
             else:
                 try:
-                    if '.' in env_value:
-                        current[final_key] = float(env_value)
-                    else:
-                        current[final_key] = int(env_value)
+                    current[final_key] = int(env_value)
                 except ValueError:
-                    current[final_key] = env_value
+                    try:
+                        current[final_key] = float(env_value)
+                    except ValueError:
+                        current[final_key] = env_value
 
     return config_dict
 

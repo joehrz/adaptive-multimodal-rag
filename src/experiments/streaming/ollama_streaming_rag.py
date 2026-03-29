@@ -99,6 +99,9 @@ class OllamaStreamingRAG:
         # Initialize HyDE engine for real embedding-based retrieval
         self._hyde_engine: Optional[OllamaHyDE] = None
 
+        # Connection pooling for Ollama API
+        self._session = requests.Session()
+
     def _format_conversation_history(self, conversation_history: list) -> str:
         """Format conversation history for inclusion in prompts."""
         if not conversation_history:
@@ -172,7 +175,7 @@ class OllamaStreamingRAG:
             ))
 
         try:
-            response = requests.post(
+            response = self._session.post(
                 f"{self.ollama_url}/api/generate",
                 json={
                     "model": self.model,

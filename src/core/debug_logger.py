@@ -6,6 +6,7 @@ Captures and logs all RAG interactions for debugging and analysis
 import os
 import json
 import logging
+import tempfile
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field, asdict
@@ -332,7 +333,7 @@ class DebugLogger:
         return f"Entry {saved_entry_id} saved"
 
     def _append_json_entry(self, entry_dict: Dict) -> None:
-        """Append entry to JSON log file"""
+        """Append entry to JSON log file using atomic write to prevent data loss"""
         # Read existing data
         with open(self.json_log_path, 'r') as f:
             data = json.load(f)
@@ -340,9 +341,19 @@ class DebugLogger:
         # Append new entry
         data["entries"].append(entry_dict)
 
-        # Write back
-        with open(self.json_log_path, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+        # Atomic write: write to temp file then rename
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(self.output_dir), suffix='.json.tmp'
+        )
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+            os.replace(tmp_path, str(self.json_log_path))
+        except Exception:
+            # Clean up temp file on failure
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
     def _append_txt_entry(self, entry_dict: Dict) -> None:
         """Append entry to TXT log file in human-readable format"""

@@ -31,8 +31,16 @@ def mock_ollama():
          patch('src.core.ollama_rag.OLLAMA_AVAILABLE', True), \
          patch('src.core.ollama_rag.CONFIG_AVAILABLE', False), \
          patch('src.core.ollama_rag.CACHING_AVAILABLE', False):
+        # Create a shared generate mock so tests can set side_effect on mock_ol.generate
+        # and it applies to the Client instance used by OllamaRAG
+        generate_mock = MagicMock(return_value={'response': 'mocked response', 'eval_count': 10})
+        mock_ol.generate = generate_mock
         mock_ol.list.return_value = mock_list_result
-        mock_ol.generate.return_value = {'response': 'mocked response', 'eval_count': 10}
+        # Mock Client() so that OllamaRAG's self._ollama_client works
+        mock_client = MagicMock()
+        mock_client.list.return_value = mock_list_result
+        mock_client.generate = generate_mock
+        mock_ol.Client.return_value = mock_client
         yield mock_ol
 
 
