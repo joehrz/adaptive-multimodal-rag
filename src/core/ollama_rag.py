@@ -204,15 +204,22 @@ class OllamaRAG:
         self.vector_store = None
         self.documents = []
 
-        # Initialize caching
+        # Initialize caching with semantic similarity matching
         self.enable_caching = _enable_caching and CACHING_AVAILABLE
         if self.enable_caching:
             if cache_manager:
                 self.cache_manager = cache_manager
             else:
-                self.cache_manager = RAGCacheManager(enable_auto_cleanup=True)
+                # Pass embedding function for semantic cache matching
+                def _embed_query(text: str) -> List[float]:
+                    return self.embeddings.embed_query(text)
+
+                self.cache_manager = RAGCacheManager(
+                    enable_auto_cleanup=True,
+                    embed_fn=_embed_query,
+                )
             if self.verbose:
-                logger.info("Caching: Enabled")
+                logger.info("Caching: Enabled (semantic similarity)")
         else:
             self.cache_manager = None
             if self.verbose:
@@ -507,27 +514,7 @@ class OllamaRAG:
                 if self.verbose:
                     logger.warning(f"[PAGE FILTER] Metadata filter failed: {e}, falling back to semantic search")
 
-        # Check cache for search results
-        if self.cache_manager and not bypass_cache:
-            cached_results = self.cache_manager.get_search_results(query, k)
-            if cached_results:
-                if self.verbose:
-                    logger.info(f"[CACHE HIT] Retrieved {len(cached_results)} documents from cache")
-                # Reconstruct documents from cache
-                docs = []
-                for item in cached_results:
-                    if isinstance(item, tuple) and len(item) == 3:
-                        doc_content, score, metadata = item
-                    elif isinstance(item, tuple) and len(item) == 2:
-                        doc_content, score = item
-                        metadata = {}
-                    else:
-                        continue
-                    meta = {**metadata, "score": score, "source": "cached"}
-                    docs.append(Document(page_content=doc_content, metadata=meta))
-                return docs
-
-        # Cache miss - perform actual search
+        # Perform search
         # When reranker is active, fetch more candidates for it to score
         if self.reranker:
             raw_k = max(self.reranker_candidates, k * 3)
@@ -557,13 +544,6 @@ class OllamaRAG:
         if self.verbose:
             logger.info(f"[RETRIEVAL] Returning {len(docs)} documents" +
                         (" (reranked)" if self.reranker else " (after deduplication)"))
-
-        # Cache the deduplicated results
-        if self.cache_manager and docs:
-            results_to_cache = [(doc.page_content, 1.0, doc.metadata) for doc in docs]
-            self.cache_manager.cache_search_results(query, k, results_to_cache)
-            if self.verbose:
-                logger.info(f"[CACHE MISS] Cached {len(docs)} unique documents")
 
         return docs
 

@@ -1,11 +1,12 @@
 """
-Tests for the RAG Caching System: LRU cache, TTL expiration, semantic cache, and cache stats.
+Tests for the RAG Caching System: LRU cache, semantic query cache, and cache stats.
 All tests are fast and deterministic - no external dependencies required.
 """
 
 import sys
 import time
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+import numpy as np
 
 import pytest
 
@@ -16,7 +17,6 @@ from src.core.caching_system import (
     CacheStats,
     LRUCache,
     SemanticQueryCache,
-    VectorSearchCache,
     RAGCacheManager,
 )
 
@@ -61,12 +61,13 @@ class TestCacheStats:
         assert stats.hit_rate == 1.0
 
     def test_to_dict(self):
-        stats = CacheStats(hits=5, misses=5, evictions=2, expirations=1)
+        stats = CacheStats(hits=5, misses=5, evictions=2, expirations=1, semantic_hits=2)
         d = stats.to_dict()
         assert d["hits"] == 5
         assert d["misses"] == 5
         assert d["evictions"] == 2
         assert d["expirations"] == 1
+        assert d["semantic_hits"] == 2
         assert d["hit_rate"] == "50.00%"
         assert d["total_requests"] == 10
 
@@ -165,11 +166,40 @@ class TestLRUCache:
         assert cache.stats.misses == 1
 
 
-
 # --- SemanticQueryCache tests ---
 
+def _mock_embed_fn(text):
+    """Simple deterministic embedding for testing.
+    Similar texts get similar vectors."""
+    np.random.seed(hash(text.lower().strip()) % 2**31)
+    return np.random.randn(64).tolist()
+
+
+def _similar_embed_fn(text):
+    """Embedding function where specific queries map to similar vectors."""
+    base = np.zeros(64)
+    text_lower = text.lower().strip()
+
+    if "machine learning" in text_lower or "ml" in text_lower:
+        base[0] = 1.0
+        base[1] = 0.9
+        # Add small noise based on exact text so they're similar but not identical
+        np.random.seed(hash(text_lower) % 2**31)
+        base += np.random.randn(64) * 0.05
+    elif "deep learning" in text_lower:
+        base[0] = 0.8
+        base[2] = 1.0
+        np.random.seed(hash(text_lower) % 2**31)
+        base += np.random.randn(64) * 0.05
+    else:
+        np.random.seed(hash(text_lower) % 2**31)
+        base = np.random.randn(64)
+
+    return base.tolist()
+
+
 class TestSemanticQueryCache:
-    def test_put_and_get(self):
+    def test_put_and_get_exact_match(self):
         cache = SemanticQueryCache(capacity=10)
         cache.put("What is ML?", "Machine learning is...", strategy="baseline")
         result = cache.get("What is ML?")
@@ -189,9 +219,33 @@ class TestSemanticQueryCache:
         result = cache.get("What is ML?")
         assert result is not None
 
-    def test_miss_for_different_query(self):
+    def test_miss_for_different_query_without_embeddings(self):
         cache = SemanticQueryCache(capacity=10)
         cache.put("What is ML?", "answer")
+        result = cache.get("What is deep learning?")
+        assert result is None
+
+    def test_semantic_match_similar_queries(self):
+        cache = SemanticQueryCache(
+            capacity=10,
+            similarity_threshold=0.85,
+            embed_fn=_similar_embed_fn,
+        )
+        cache.put("What is machine learning?", "ML is a subset of AI")
+        # "What is ML?" should semantically match
+        result = cache.get("What is ML?")
+        assert result is not None
+        assert result["response"] == "ML is a subset of AI"
+        assert cache.stats.semantic_hits == 1
+
+    def test_semantic_miss_for_dissimilar_queries(self):
+        cache = SemanticQueryCache(
+            capacity=10,
+            similarity_threshold=0.85,
+            embed_fn=_similar_embed_fn,
+        )
+        cache.put("What is machine learning?", "ML is a subset of AI")
+        # "What is deep learning?" should NOT match (different topic cluster)
         result = cache.get("What is deep learning?")
         assert result is None
 
@@ -201,16 +255,16 @@ class TestSemanticQueryCache:
         assert cache.invalidate("What is ML?") is True
         assert cache.get("What is ML?") is None
 
-    def test_stats_property(self):
+    def test_stats_tracking(self):
         cache = SemanticQueryCache(capacity=10)
         cache.put("q1", "a1")
-        cache.get("q1")
-        cache.get("q2")
+        cache.get("q1")  # hit
+        cache.get("q2")  # miss
         assert cache.stats.hits == 1
         assert cache.stats.misses == 1
 
     def test_clear(self):
-        cache = SemanticQueryCache(capacity=10)
+        cache = SemanticQueryCache(capacity=10, embed_fn=_mock_embed_fn)
         cache.put("q1", "a1")
         cache.clear()
         assert cache.get("q1") is None
@@ -222,52 +276,18 @@ class TestSemanticQueryCache:
         assert result["documents"] == ["doc1"]
         assert result["metadata"] == {"score": 0.9}
 
+    def test_embed_fn_failure_falls_back_to_exact_match(self):
+        def bad_embed_fn(text):
+            raise RuntimeError("embedding failed")
 
-# --- VectorSearchCache tests ---
-
-class TestVectorSearchCache:
-    def test_put_and_get_search_results(self):
-        cache = VectorSearchCache(capacity=10)
-        results = [("doc1", 0.9), ("doc2", 0.8)]
-        cache.put_search_results("test query", 5, results)
-        cached = cache.get_search_results("test query", 5)
-        assert cached == results
-
-    def test_different_k_is_different_key(self):
-        cache = VectorSearchCache(capacity=10)
-        cache.put_search_results("test", 5, [("doc1", 0.9)])
-        assert cache.get_search_results("test", 10) is None
-
-    def test_filter_criteria_affects_key(self):
-        cache = VectorSearchCache(capacity=10)
-        cache.put_search_results("test", 5, [("doc1", 0.9)], filter_criteria={"source": "A"})
-        assert cache.get_search_results("test", 5) is None
-        assert cache.get_search_results("test", 5, filter_criteria={"source": "A"}) is not None
-
-    def test_embedding_cache(self):
-        cache = VectorSearchCache(capacity=10)
-        embedding = [0.1, 0.2, 0.3]
-        cache.put_embedding("test text", embedding)
-        cached = cache.get_embedding("test text")
-        assert cached == embedding
-
-    def test_embedding_cache_miss(self):
-        cache = VectorSearchCache(capacity=10)
-        assert cache.get_embedding("missing") is None
-
-    def test_stats(self):
-        cache = VectorSearchCache(capacity=10)
-        stats = cache.stats
-        assert "search_cache" in stats
-        assert "embedding_cache" in stats
-
-    def test_clear(self):
-        cache = VectorSearchCache(capacity=10)
-        cache.put_search_results("q", 5, [("d", 0.9)])
-        cache.put_embedding("text", [0.1])
-        cache.clear()
-        assert cache.get_search_results("q", 5) is None
-        assert cache.get_embedding("text") is None
+        cache = SemanticQueryCache(capacity=10, embed_fn=bad_embed_fn)
+        cache.put("What is ML?", "answer")
+        # Exact match should still work
+        result = cache.get("What is ML?")
+        assert result is not None
+        # Different query should miss (no semantic fallback)
+        result = cache.get("What is machine learning?")
+        assert result is None
 
 
 # --- RAGCacheManager tests ---
@@ -280,19 +300,19 @@ class TestRAGCacheManager:
         assert result is not None
         assert result["response"] == "A language"
 
-    def test_search_results_round_trip(self):
-        manager = RAGCacheManager(enable_auto_cleanup=False)
-        results = [("doc1", 0.95)]
-        manager.cache_search_results("query", 5, results)
-        cached = manager.get_search_results("query", 5)
-        assert cached == results
-
-    def test_embedding_round_trip(self):
-        manager = RAGCacheManager(enable_auto_cleanup=False)
-        emb = [0.1, 0.2, 0.3, 0.4]
-        manager.cache_embedding("text", emb)
-        cached = manager.get_embedding("text")
-        assert cached == emb
+    def test_semantic_match_with_embed_fn(self):
+        manager = RAGCacheManager(
+            enable_auto_cleanup=False,
+            embed_fn=_similar_embed_fn,
+            similarity_threshold=0.85,
+        )
+        manager.cache_query_response(
+            "What is machine learning?", "ML is AI", strategy="baseline"
+        )
+        # Semantic match
+        result = manager.get_query_response("What is ML?")
+        assert result is not None
+        assert result["response"] == "ML is AI"
 
     def test_get_stats(self):
         manager = RAGCacheManager(enable_auto_cleanup=False)
@@ -301,6 +321,7 @@ class TestRAGCacheManager:
         stats = manager.get_stats()
         assert stats["query_cache"]["hits"] == 1
         assert "summary" in stats
+        assert "semantic_hits" in stats["summary"]
 
     def test_get_hit_rate_empty(self):
         manager = RAGCacheManager(enable_auto_cleanup=False)
@@ -317,17 +338,12 @@ class TestRAGCacheManager:
     def test_clear_all(self):
         manager = RAGCacheManager(enable_auto_cleanup=False)
         manager.cache_query_response("q1", "a1")
-        manager.cache_search_results("s1", 5, [("d", 0.9)])
-        manager.cache_embedding("e1", [0.1])
         manager.clear_all()
         assert manager.get_query_response("q1") is None
-        assert manager.get_search_results("s1", 5) is None
-        assert manager.get_embedding("e1") is None
 
     def test_shutdown(self):
         manager = RAGCacheManager(enable_auto_cleanup=True, cleanup_interval=100)
         manager.shutdown()
-        # Should not raise
 
     def test_cleanup_expired(self):
         manager = RAGCacheManager(

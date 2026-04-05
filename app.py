@@ -182,9 +182,6 @@ def initialize_system(model: str = None):
     if st.session_state.router is None:
         with st.spinner(f"Initializing Adaptive RAG System with {selected_model}..."):
             try:
-                # Initialize cache manager first
-                st.session_state.cache_manager = RAGCacheManager(enable_auto_cleanup=True)
-
                 # Initialize components with selected model
                 analyzer = OllamaQueryAnalyzer(model=selected_model, verbose=False)
                 st.session_state.router = OllamaAdaptiveRouter(
@@ -194,8 +191,9 @@ def initialize_system(model: str = None):
                 st.session_state.base_rag = OllamaRAG(
                     model=selected_model,
                     verbose=False,
-                    cache_manager=st.session_state.cache_manager
                 )
+                # Use the cache manager created by OllamaRAG (has embedding function wired up)
+                st.session_state.cache_manager = st.session_state.base_rag.cache_manager
 
                 # Initialize Self-RAG if available
                 if SELF_RAG_AVAILABLE:
@@ -658,11 +656,13 @@ def main():
         if st.session_state.cache_manager:
             with st.expander("Cache Statistics"):
                 cache_stats = st.session_state.cache_manager.get_stats()
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Cache Hits", cache_stats["summary"]["total_hits"])
                 with col2:
                     st.metric("Cache Misses", cache_stats["summary"]["total_misses"])
+                with col3:
+                    st.metric("Semantic Hits", cache_stats["summary"]["semantic_hits"])
 
                 hit_rate = st.session_state.cache_manager.get_hit_rate()
                 st.progress(hit_rate, text=f"Hit Rate: {hit_rate:.1%}")
