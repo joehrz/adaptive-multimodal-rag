@@ -158,7 +158,7 @@ class OllamaAdaptiveRouter:
             # Summarization needs broad context retrieval - use HyDE at minimum
             if analysis.complexity_score >= 8:
                 strategy = RAGStrategy.HYDE_SELF_RAG
-                reasoning = "Complex summarization query - HyDE + Self-RAG for comprehensive synthesis"
+                reasoning = "Complex summarization query - HyDE + Self-RAG synthesis"
             else:
                 strategy = RAGStrategy.HYDE
                 reasoning = "Summarization query requires broad context retrieval - HyDE improves coverage"

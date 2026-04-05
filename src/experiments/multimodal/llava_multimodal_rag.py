@@ -82,9 +82,7 @@ class ExtractedContent:
 
 class LLaVAMultimodalRAG:
     """
-    Multimodal RAG using LLaVA for vision understanding
-
-    This class gives your RAG system "eyes" to see and understand:
+    Multimodal RAG using LLaVA for vision understanding of:
     - Figures and charts
     - Tables
     - Diagrams
@@ -573,7 +571,7 @@ Be extremely detailed and technical. This description will be used to answer spe
             print("="*60)
 
     def generate_debug_report(self, pdf_path: str = None) -> Dict:
-        """Generate comprehensive debugging report"""
+        """Generate debugging report"""
         if not self.debugger:
             return {"error": "Debug mode not enabled"}
 
@@ -598,7 +596,6 @@ def demo_with_sample_pdf():
     """
     Demo showing how to use multimodal RAG with a sample PDF
 
-    This function demonstrates the complete workflow
     """
     print("\n" + "="*60)
     print("MULTIMODAL RAG DEMO")
@@ -622,7 +619,6 @@ def demo_with_sample_pdf():
     # If you have actual PDFs, uncomment:
     # rag.add_documents(['path/to/paper1.pdf', 'path/to/paper2.pdf'])
     #
-    # Then query:
     # result = rag.query("What were the accuracy results in the comparison table?")
     # print(result['answer'])
 

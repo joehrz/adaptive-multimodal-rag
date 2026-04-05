@@ -326,7 +326,7 @@ Informative passage:"""
 
         # Add HyDE docs first (higher priority)
         for doc in hyde_docs:
-            # Use configurable minimum characters for robust deduplication
+            # Skip short chunks below threshold
             dedup_chars = min(self.dedup_min_chars, len(doc.page_content))
             content_hash = hashlib.sha256(doc.page_content[:dedup_chars].lower().encode()).hexdigest()
             if content_hash not in seen_hashes:
@@ -363,7 +363,7 @@ Informative passage:"""
 
         if self._detect_summarization_query(query):
             prompt = f"""You are summarizing a document based on the provided context.
-Synthesize the information from ALL provided documents into a coherent, comprehensive summary.
+Synthesize the information from ALL provided documents into a summary.
 Cover the main contributions, methodology, key findings, and conclusions.
 Use the format [Document X] when referencing specific information.
 Do NOT say you cannot summarize - work with the context provided.

@@ -344,7 +344,7 @@ class OllamaRAG:
             if not content:
                 continue
 
-            # Use configurable minimum characters for robust deduplication
+            # Skip short chunks below threshold
             dedup_chars = min(min_chars, len(content))
             # Hash normalized content
             content_for_hash = content[:dedup_chars].lower()
@@ -614,7 +614,7 @@ class OllamaRAG:
 
             if is_summarization:
                 prompt = f"""You are summarizing a document based on the provided context.
-Synthesize the information from ALL provided documents into a coherent, comprehensive summary.
+Synthesize the information from ALL provided documents into a summary.
 Cover the main contributions, methodology, key findings, and conclusions.
 Use the format [Document X] when referencing specific information.
 Do NOT say you cannot summarize - work with the context provided.

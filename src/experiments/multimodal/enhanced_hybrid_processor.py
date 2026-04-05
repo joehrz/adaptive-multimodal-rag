@@ -1,12 +1,12 @@
 """
 Enhanced Hybrid Multimodal Processor: OCR + Vision LLM Integration
-Combines multiple OCR engines with LLaVA for comprehensive technical document understanding
+Combines multiple OCR engines with LLaVA for technical document understanding
 
 Key Features:
 - Multi-engine OCR with intelligent fallback
 - Context-aware LLaVA prompting using OCR results
 - Confidence-based fusion of OCR and vision understanding
-- Comprehensive quality assessment and debugging
+- Quality assessment and debugging
 - Robust error handling and graceful degradation
 - Performance monitoring and optimization
 """
@@ -291,7 +291,7 @@ Be extremely detailed and technical. This description will be used to answer spe
             "",
             f"OCR has extracted the following text from this image: \"{ocr_text}\"",
             "",
-            "Your task is to provide a comprehensive visual analysis that COMPLEMENTS the OCR text.",
+            "Provide visual analysis that COMPLEMENTS the OCR text.",
             "Focus on the visual structure, layout, and relationships that OCR cannot capture.",
             "",
             "Include:"
@@ -475,8 +475,8 @@ Be extremely detailed and technical. This description will be used to answer spe
 
         if ocr_quality > 0.7 and llava_quality > 0.7:
             # Both high quality - comprehensive fusion
-            method = "comprehensive_fusion"
-            return self._create_comprehensive_description(ocr_result.text, llava_description), method
+            method = "fusion"
+            return self._merge_descriptions(ocr_result.text, llava_description), method
 
         elif ocr_quality > llava_quality + 0.2:
             # OCR significantly better
@@ -519,8 +519,8 @@ Be extremely detailed and technical. This description will be used to answer spe
         else:
             return ocr_result.text, "ocr_fallback"
 
-    def _create_comprehensive_description(self, ocr_text: str, llava_desc: str) -> str:
-        """Create comprehensive description from both high-quality sources"""
+    def _merge_descriptions(self, ocr_text: str, llava_desc: str) -> str:
+        """Merge OCR text and LLaVA description into a single output"""
         return f"""**Technical Figure Analysis**
 
 **Visual Structure and Layout:**
@@ -570,7 +570,7 @@ This technical diagram combines the visual structure described above with the sp
 
     def _calculate_fusion_confidence(self, ocr_quality: float, llava_quality: float, method: str) -> float:
         """Calculate overall confidence for fused result"""
-        if method == "comprehensive_fusion":
+        if method == "fusion":
             return (ocr_quality + llava_quality) / 2
         elif method in ["ocr_enhanced", "ocr_primary"]:
             return ocr_quality * 0.8 + llava_quality * 0.2

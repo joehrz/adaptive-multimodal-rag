@@ -698,7 +698,7 @@ Knowledge Graph - Relationships (reasoning path):
 
 {f"Community Summaries:{chr(10)}{chr(10).join(community_context)}" if community_context else ""}
 
-Based on the document content and knowledge graph information, provide a comprehensive answer. Cite specific information from the documents when available:"""
+Based on the document content and knowledge graph information, provide an answer. Cite specific information from the documents when available:"""
 
         if self.verbose:
             logger.info("Generating answer...")

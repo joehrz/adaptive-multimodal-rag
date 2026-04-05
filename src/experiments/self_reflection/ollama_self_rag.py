@@ -385,7 +385,7 @@ REASONING: [brief explanation]"""
             }
         )
 
-        # Use robust token parsing
+        # Parse reflection token
         token_patterns = {
             RelevanceToken.RELEVANT: {
                 'pattern': r'\bRELEVANT\b',
@@ -433,7 +433,7 @@ REASONING: [brief explanation]"""
             }
         )
 
-        # Use robust token parsing
+        # Parse reflection token
         token_patterns = {
             SupportToken.FULLY_SUPPORTED: {
                 'pattern': r'\bFULLY[_\s]*SUPPORTED\b',
@@ -478,7 +478,7 @@ REASONING: [brief explanation]"""
             }
         )
 
-        # Use robust token parsing
+        # Parse reflection token
         token_patterns = {
             UtilityToken.USEFUL: {
                 'pattern': r'\bUSEFUL\b',

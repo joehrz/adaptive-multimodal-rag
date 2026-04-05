@@ -312,7 +312,7 @@ class OllamaStreamingRAG:
 
         conv_context = self._format_conversation_history(conversation_history)
 
-        prompt = f"""Based on the following context documents, provide a comprehensive answer to the question. If the first document contains a hypothetical analysis, use it to inform your response while also incorporating information from the other retrieved documents.
+        prompt = f"""Based on the following context documents, answer the question. If the first document contains a hypothetical analysis, use it to inform your response while also incorporating information from the other retrieved documents.
 
 Context:
 {context}
