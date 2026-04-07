@@ -17,7 +17,6 @@ import time
 import logging
 import hashlib
 from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING
-from dataclasses import dataclass
 
 try:
     import ollama
@@ -38,54 +37,13 @@ except ImportError:
 if TYPE_CHECKING:
     from src.core.config import Config
 
+# Re-export models so existing imports like
+#   from src.experiments.hyde.ollama_hyde import HyDEResult, HyDERetrievalResult
+# continue to work.
+from src.experiments.hyde.models import HyDEResult, HyDERetrievalResult  # noqa: F401
+from src.experiments.hyde.hypothetical_generator import HypotheticalGenerator
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class HyDEResult:
-    """Result from HyDE query"""
-    query: str
-    hypothetical_document: str
-    answer: str
-    retrieved_docs: List[Document]
-    hyde_retrieval_count: int
-    standard_retrieval_count: int
-    total_time: float
-    hyde_generation_time: float
-    retrieval_time: float
-    answer_generation_time: float
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "query": self.query,
-            "hypothetical_document": self.hypothetical_document[:500] + "..." if len(self.hypothetical_document) > 500 else self.hypothetical_document,
-            "answer": self.answer,
-            "hyde_retrieval_count": self.hyde_retrieval_count,
-            "standard_retrieval_count": self.standard_retrieval_count,
-            "total_time": self.total_time,
-            "hyde_generation_time": self.hyde_generation_time,
-            "retrieval_time": self.retrieval_time,
-            "answer_generation_time": self.answer_generation_time
-        }
-
-
-@dataclass
-class HyDERetrievalResult:
-    """Result from HyDE retrieval-only operation (no answer generation)"""
-    query: str
-    hypothetical_document: str
-    documents: List[Document]
-    retrieval_time: float
-    hyde_generation_time: float
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "query": self.query,
-            "hypothetical_document": self.hypothetical_document[:500] + "..." if len(self.hypothetical_document) > 500 else self.hypothetical_document,
-            "document_count": len(self.documents),
-            "retrieval_time": self.retrieval_time,
-            "hyde_generation_time": self.hyde_generation_time
-        }
 
 
 class OllamaHyDE:
@@ -176,6 +134,19 @@ class OllamaHyDE:
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Ollama: {e}")
 
+        # Initialize the hypothetical document generator.
+        # Pass ollama.generate as a callable so that tests can mock it
+        # via the module-level `ollama` reference in this file.
+        self._generator = HypotheticalGenerator(
+            model=self.model,
+            temperature=self.temperature,
+            answer_temperature=self.answer_temperature,
+            max_tokens=self.max_tokens,
+            hypothetical_max_tokens=self.hypothetical_max_tokens,
+            llm_generate=ollama.generate,
+            verbose=self.verbose,
+        )
+
         # Initialize embeddings
         from src.core.embeddings import get_embeddings
         self.embeddings = get_embeddings(
@@ -227,41 +198,9 @@ class OllamaHyDE:
     def _generate_hypothetical_document(self, query: str) -> str:
         """
         Generate a hypothetical document that would answer the query.
-        This is the core of HyDE - we create a fake but plausible answer
-        to use for semantic retrieval.
+        Delegates to HypotheticalGenerator.
         """
-        prompt = f"""You are a knowledgeable assistant. Write a detailed, informative passage that would directly answer the following question.
-Write as if this passage is from a textbook or authoritative source.
-Do NOT say "I don't know" or ask questions - just write an informative passage.
-
-Question: {query}
-
-Informative passage:"""
-
-        max_retries = 2
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                response = ollama.generate(
-                    model=self.model,
-                    prompt=prompt,
-                    options={
-                        'temperature': self.temperature,
-                        'num_predict': self.hypothetical_max_tokens,
-                    }
-                )
-
-                return response['response'].strip()
-
-            except Exception as e:
-                last_error = e
-                if attempt < max_retries - 1:
-                    logger.warning(f"HyDE generation failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in 2s...")
-                    time.sleep(2)
-                else:
-                    logger.error(f"Error generating hypothetical document after {max_retries} attempts: {last_error}")
-                    raise RuntimeError(f"HyDE hypothetical generation failed after {max_retries} attempts: {last_error}") from last_error
+        return self._generator.generate_hypothetical_document(query)
 
     def _retrieve_with_hypothetical(self, hypothetical_doc: str, query: str) -> Tuple[List[Document], List[Document]]:
         """
@@ -326,7 +265,6 @@ Informative passage:"""
 
         # Add HyDE docs first (higher priority)
         for doc in hyde_docs:
-            # Skip short chunks below threshold
             dedup_chars = min(self.dedup_min_chars, len(doc.page_content))
             content_hash = hashlib.sha256(doc.page_content[:dedup_chars].lower().encode()).hexdigest()
             if content_hash not in seen_hashes:
@@ -347,55 +285,11 @@ Informative passage:"""
 
     def _detect_summarization_query(self, query: str) -> bool:
         """Detect if query is asking for a summary or overview"""
-        summarization_keywords = [
-            'summarize', 'summary', 'summarise', 'overview', 'abstract',
-            'main points', 'key points', 'key findings', 'key takeaways',
-            'main contribution', 'main contributions', 'main idea',
-            'tldr', 'recap', 'brief',
-            'describe the paper', 'what does the paper say',
-            'what is the paper about', 'what does this paper',
-        ]
-        query_lower = query.lower()
-        return any(keyword in query_lower for keyword in summarization_keywords)
+        return self._generator.detect_summarization_query(query)
 
     def _generate_answer(self, query: str, context: str, hypothetical: str = None) -> str:
         """Generate final answer using retrieved context with query-type-aware prompts"""
-
-        if self._detect_summarization_query(query):
-            prompt = f"""You are summarizing a document based on the provided context.
-Synthesize the information from ALL provided documents into a summary.
-Cover the main contributions, methodology, key findings, and conclusions.
-Use the format [Document X] when referencing specific information.
-Do NOT say you cannot summarize - work with the context provided.
-
-Context from retrieved documents:
-{context}
-
-Request: {query}
-
-Summary (with citations):"""
-        else:
-            prompt = f"""Answer the following question using the provided context.
-Be accurate and cite information from the context when relevant.
-If the context doesn't contain the answer, say so.
-
-Context from retrieved documents:
-{context}
-
-Question: {query}
-
-Answer:"""
-
-        response = ollama.generate(
-            model=self.model,
-            prompt=prompt,
-            options={
-                'temperature': self.answer_temperature,
-                'num_predict': self.max_tokens,
-            }
-        )
-
-        return response['response'].strip()
+        return self._generator.generate_answer(query, context, hypothetical)
 
     def query(self, question: str) -> HyDEResult:
         """
@@ -588,75 +482,3 @@ Answer:"""
         except Exception as e:
             logger.error(f"Error clearing vector store: {e}")
             return False
-
-
-def test_hyde():
-    """Test HyDE functionality"""
-    print("=" * 70)
-    print("HyDE TEST")
-    print("=" * 70)
-
-    try:
-        # Initialize
-        print("\nInitializing HyDE...")
-        hyde = OllamaHyDE(verbose=True)
-        print("SUCCESS: HyDE initialized")
-
-        # Create test documents
-        documents = [
-            Document(
-                page_content="""Machine learning is a subset of artificial intelligence (AI) that enables
-                computers to learn from data without being explicitly programmed. It uses algorithms
-                to identify patterns and make predictions. Deep learning is a specialized form of
-                machine learning that uses neural networks with multiple layers.""",
-                metadata={"source": "ml_basics"}
-            ),
-            Document(
-                page_content="""BERT (Bidirectional Encoder Representations from Transformers) is a
-                pre-trained language model developed by Google. It uses masked language modeling
-                and next sentence prediction for pre-training. BERT achieved state-of-the-art
-                results on many NLP benchmarks including GLUE, SQuAD, and SWAG.""",
-                metadata={"source": "bert_overview"}
-            ),
-            Document(
-                page_content="""RAG (Retrieval-Augmented Generation) combines information retrieval
-                with text generation. HyDE (Hypothetical Document Embeddings) improves RAG by
-                generating a hypothetical answer first, then using that embedding to retrieve
-                more relevant documents.""",
-                metadata={"source": "rag_techniques"}
-            )
-        ]
-
-        # Add documents
-        hyde.add_documents(documents)
-
-        # Test query
-        query = "What is BERT and what tasks is it evaluated on?"
-        print(f"\nQuery: {query}")
-
-        result = hyde.query(query)
-
-        print("\n" + "=" * 70)
-        print("TEST RESULTS")
-        print("=" * 70)
-        print(f"Hypothetical: {result.hypothetical_document[:200]}...")
-        print(f"\nAnswer: {result.answer[:400]}...")
-        print(f"\nHyDE retrieved: {result.hyde_retrieval_count} docs")
-        print(f"Standard retrieved: {result.standard_retrieval_count} docs")
-        print(f"Total time: {result.total_time:.1f}s")
-
-        # Cleanup
-        hyde.clear_vector_store()
-
-        print("\n" + "=" * 70)
-        print("TEST PASSED!")
-        print("=" * 70)
-
-    except Exception as e:
-        print(f"\nERROR: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == "__main__":
-    test_hyde()

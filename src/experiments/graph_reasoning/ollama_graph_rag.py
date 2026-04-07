@@ -13,11 +13,7 @@ Features:
 
 import time
 import logging
-import hashlib
 from typing import Dict, List, Optional, Any, Set, Tuple, TYPE_CHECKING
-from dataclasses import dataclass, field
-from collections import defaultdict
-import json
 
 try:
     import networkx as nx
@@ -43,76 +39,13 @@ except ImportError:
 if TYPE_CHECKING:
     from src.core.config import Config
 
+from src.experiments.graph_reasoning.models import (
+    Entity, Relationship, Community, GraphRAGResult
+)
+from src.experiments.graph_reasoning.graph_builder import GraphBuilder
+from src.experiments.graph_reasoning import graph_persistence
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class Entity:
-    """Extracted entity from documents"""
-    id: str
-    name: str
-    entity_type: str  # e.g., "CONCEPT", "PERSON", "TECHNOLOGY", "ORGANIZATION"
-    description: str = ""
-    source_docs: List[str] = field(default_factory=list)
-    attributes: Dict[str, Any] = field(default_factory=dict)
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __eq__(self, other):
-        if isinstance(other, Entity):
-            return self.id == other.id
-        return False
-
-
-@dataclass
-class Relationship:
-    """Relationship/edge between entities"""
-    source_id: str
-    target_id: str
-    relation_type: str  # e.g., "IS_A", "RELATES_TO", "USES", "PART_OF"
-    description: str = ""
-    weight: float = 1.0
-    source_doc: str = ""
-
-    @property
-    def id(self) -> str:
-        return f"{self.source_id}_{self.relation_type}_{self.target_id}"
-
-
-@dataclass
-class Community:
-    """Community of related entities"""
-    id: str
-    entities: List[str]  # Entity IDs
-    summary: str = ""
-    central_entity: Optional[str] = None
-    level: int = 0  # Hierarchy level
-
-
-@dataclass
-class GraphRAGResult:
-    """Result from GraphRAG query"""
-    query: str
-    answer: str
-    reasoning_path: List[Dict[str, Any]]  # Steps in the reasoning
-    entities_used: List[str]
-    relationships_used: List[str]
-    communities_consulted: List[str]
-    total_time: float = 0.0
-    num_hops: int = 0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "query": self.query,
-            "answer": self.answer,
-            "reasoning_path": self.reasoning_path,
-            "entities_used": self.entities_used,
-            "relationships_used": self.relationships_used,
-            "communities_consulted": self.communities_consulted,
-            "total_time": self.total_time,
-            "num_hops": self.num_hops
-        }
 
 
 class OllamaGraphRAG:
@@ -201,6 +134,14 @@ class OllamaGraphRAG:
         # Document storage
         self.documents: Dict[str, Document] = {}
 
+        # Initialize graph builder
+        self._builder = GraphBuilder(
+            graph_building_model=self.graph_building_model,
+            max_entities_per_doc=self.max_entities_per_doc,
+            max_relationships_per_doc=self.max_relationships_per_doc,
+            verbose=self.verbose,
+        )
+
         # Verify Ollama connection
         try:
             available_models = ollama.list()
@@ -214,209 +155,25 @@ class OllamaGraphRAG:
 
     def _generate_entity_id(self, name: str) -> str:
         """Generate unique ID for entity"""
-        return hashlib.sha256(name.lower().strip().encode()).hexdigest()[:12]
+        return GraphBuilder.generate_entity_id(name)
 
     def _extract_entities(self, document: Document) -> List[Entity]:
         """Extract entities from a document using LLM"""
-        prompt = f"""Extract key entities (concepts, technologies, organizations, people) from the following text.
-For each entity, provide:
-1. Name
-2. Type (CONCEPT, TECHNOLOGY, PERSON, ORGANIZATION, or OTHER)
-3. Brief description based on the text
-
-Text:
-{document.page_content[:2000]}
-
-Format your response as a list, one entity per line:
-ENTITY: [name] | TYPE: [type] | DESCRIPTION: [brief description]
-
-Extract 3-{self.max_entities_per_doc} key entities:"""
-
-        try:
-            response = ollama.generate(
-                model=self.graph_building_model,
-                prompt=prompt,
-                options={'temperature': 0.2, 'num_predict': 500},
-            )
-        except Exception as e:
-            logger.warning(f"Entity extraction LLM call failed: {e}")
-            return []
-
-        entities = []
-        doc_source = document.metadata.get('source', 'unknown')
-
-        for line in response['response'].split('\n'):
-            if 'ENTITY:' in line and 'TYPE:' in line:
-                try:
-                    parts = line.split('|')
-                    name = parts[0].replace('ENTITY:', '').strip()
-                    entity_type = parts[1].replace('TYPE:', '').strip() if len(parts) > 1 else "CONCEPT"
-                    description = parts[2].replace('DESCRIPTION:', '').strip() if len(parts) > 2 else ""
-
-                    if name and len(entities) < self.max_entities_per_doc:
-                        entity = Entity(
-                            id=self._generate_entity_id(name),
-                            name=name,
-                            entity_type=entity_type,
-                            description=description,
-                            source_docs=[doc_source]
-                        )
-                        entities.append(entity)
-                except Exception:
-                    continue
-
-        return entities
+        return self._builder.extract_entities(document)
 
     def _extract_relationships(self, document: Document, entities: List[Entity]) -> List[Relationship]:
         """Extract relationships between entities"""
-        if len(entities) < 2:
-            return []
-
-        entity_names = [e.name for e in entities]
-
-        prompt = f"""Given these entities from a document: {', '.join(entity_names)}
-
-And this text:
-{document.page_content[:1500]}
-
-Identify relationships between the entities. For each relationship:
-1. Source entity
-2. Relationship type (IS_A, RELATES_TO, USES, PART_OF, ENABLES, IMPROVES, PRECEDES)
-3. Target entity
-4. Brief description
-
-Format:
-RELATION: [source] -> [type] -> [target] | [description]
-
-Identify 2-{self.max_relationships_per_doc} key relationships:"""
-
-        try:
-            response = ollama.generate(
-                model=self.graph_building_model,
-                prompt=prompt,
-                options={'temperature': 0.2, 'num_predict': 400},
-            )
-        except Exception as e:
-            logger.warning(f"Relationship extraction LLM call failed: {e}")
-            return []
-
-        relationships = []
-        # Build entity map with normalized keys and also track original names for fuzzy matching
-        entity_map = {}
-        for e in entities:
-            # Add lowercased, stripped version
-            entity_map[e.name.lower().strip()] = e
-            # Also add version with extra whitespace normalized
-            entity_map[' '.join(e.name.lower().split())] = e
-
-        doc_source = document.metadata.get('source', 'unknown')
-
-        def find_entity(name: str) -> Optional[Entity]:
-            """Find entity with fuzzy matching"""
-            normalized = ' '.join(name.lower().strip().split())
-            if normalized in entity_map:
-                return entity_map[normalized]
-            # Try substring matching for partial names
-            for key, entity in entity_map.items():
-                if normalized in key or key in normalized:
-                    return entity
-            return None
-
-        for line in response['response'].split('\n'):
-            if 'RELATION:' in line and '->' in line:
-                try:
-                    relation_part = line.split('RELATION:')[1].strip()
-                    parts = relation_part.split('|')
-                    relation_str = parts[0].strip()
-                    description = parts[1].strip() if len(parts) > 1 else ""
-
-                    # Parse relation: source -> type -> target
-                    rel_parts = relation_str.split('->')
-                    if len(rel_parts) >= 3:
-                        source_name = rel_parts[0].strip()
-                        rel_type = rel_parts[1].strip().upper()
-                        target_name = rel_parts[2].strip()
-
-                        source_entity = find_entity(source_name)
-                        target_entity = find_entity(target_name)
-
-                        if source_entity and target_entity and len(relationships) < self.max_relationships_per_doc:
-                            relationship = Relationship(
-                                source_id=source_entity.id,
-                                target_id=target_entity.id,
-                                relation_type=rel_type,
-                                description=description,
-                                source_doc=doc_source
-                            )
-                            relationships.append(relationship)
-                except Exception:
-                    continue
-
-        return relationships
+        return self._builder.extract_relationships(document, entities)
 
     def _detect_communities(self) -> None:
         """Detect communities using greedy modularity algorithm"""
-        if len(self.graph.nodes()) < 2:
-            return
-
-        # Convert to undirected for community detection
-        undirected = self.graph.to_undirected()
-
-        try:
-            # Use greedy modularity communities as a simpler alternative to Louvain
-            from networkx.algorithms.community import greedy_modularity_communities
-            communities = list(greedy_modularity_communities(undirected))
-        except Exception:
-            # Fallback: treat connected components as communities
-            communities = list(nx.connected_components(undirected))
-
-        self.communities = {}
-        for i, community_nodes in enumerate(communities):
-            community_id = f"community_{i}"
-
-            # Find central entity (highest degree)
-            central_entity = None
-            max_degree = -1
-            for node in community_nodes:
-                degree = self.graph.degree(node)
-                if degree > max_degree:
-                    max_degree = degree
-                    central_entity = node
-
-            self.communities[community_id] = Community(
-                id=community_id,
-                entities=list(community_nodes),
-                central_entity=central_entity,
-                level=0
-            )
-
-        if self.verbose:
-            logger.info(f"Detected {len(self.communities)} communities")
+        self.communities = self._builder.detect_communities(
+            self.graph, self.entities, self.verbose
+        )
 
     def _summarize_community(self, community: Community) -> str:
         """Generate a summary for a community"""
-        entity_descriptions = []
-        for entity_id in community.entities[:5]:  # Limit to 5 entities
-            if entity_id in self.entities:
-                entity = self.entities[entity_id]
-                entity_descriptions.append(f"- {entity.name}: {entity.description}")
-
-        if not entity_descriptions:
-            return "No entities in community"
-
-        prompt = f"""Summarize the following group of related concepts in 1-2 sentences:
-
-{chr(10).join(entity_descriptions)}
-
-Summary:"""
-
-        response = ollama.generate(
-            model=self.graph_building_model,
-            prompt=prompt,
-            options={'temperature': 0.3, 'num_predict': 100},
-        )
-
-        return response['response'].strip()
+        return self._builder.summarize_community(community, self.entities)
 
     def build_graph_from_documents(self, documents: List[Document], max_documents: Optional[int] = None) -> Dict[str, int]:
         """
@@ -763,93 +520,16 @@ Based on the document content and knowledge graph information, provide an answer
         Returns:
             Dictionary with save statistics
         """
-        from pathlib import Path
-
-        start_time = time.time()
-
-        # Serialize entities
-        entities_data = {}
-        for entity_id, entity in self.entities.items():
-            entities_data[entity_id] = {
-                "id": entity.id,
-                "name": entity.name,
-                "entity_type": entity.entity_type,
-                "description": entity.description,
-                "source_docs": entity.source_docs,
-                "attributes": entity.attributes
-            }
-
-        # Serialize relationships
-        relationships_data = []
-        for rel in self.relationships:
-            relationships_data.append({
-                "source_id": rel.source_id,
-                "target_id": rel.target_id,
-                "relation_type": rel.relation_type,
-                "description": rel.description,
-                "weight": rel.weight,
-                "source_doc": rel.source_doc
-            })
-
-        # Serialize communities
-        communities_data = {}
-        for comm_id, community in self.communities.items():
-            communities_data[comm_id] = {
-                "id": community.id,
-                "entities": community.entities,
-                "summary": community.summary,
-                "central_entity": community.central_entity,
-                "level": community.level
-            }
-
-        # Serialize documents (metadata only, content is often too large)
-        documents_data = {}
-        for doc_id, doc in self.documents.items():
-            documents_data[doc_id] = {
-                "content": doc.page_content,
-                "metadata": doc.metadata
-            }
-
-        # Build graph edges from NetworkX graph
-        graph_edges = []
-        for source, target, data in self.graph.edges(data=True):
-            graph_edges.append({
-                "source": source,
-                "target": target,
-                "data": data
-            })
-
-        # Combine all data
-        graph_data = {
-            "version": "1.0",
-            "entities": entities_data,
-            "relationships": relationships_data,
-            "communities": communities_data,
-            "documents": documents_data,
-            "graph_edges": graph_edges,
-            "stats": self.get_graph_stats()
-        }
-
-        # Save to file
-        Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(graph_data, f, indent=2, ensure_ascii=False)
-
-        save_time = time.time() - start_time
-
-        stats = {
-            "file_path": file_path,
-            "entities_saved": len(entities_data),
-            "relationships_saved": len(relationships_data),
-            "communities_saved": len(communities_data),
-            "documents_saved": len(documents_data),
-            "save_time": save_time
-        }
-
-        if self.verbose:
-            logger.info(f"Graph saved to {file_path}: {stats['entities_saved']} entities, {stats['relationships_saved']} relationships in {save_time:.2f}s")
-
-        return stats
+        return graph_persistence.save_graph(
+            file_path=file_path,
+            graph=self.graph,
+            entities=self.entities,
+            relationships=self.relationships,
+            communities=self.communities,
+            documents=self.documents,
+            get_graph_stats=self.get_graph_stats,
+            verbose=self.verbose,
+        )
 
     def load_graph(self, file_path: str) -> Dict[str, Any]:
         """
@@ -861,92 +541,16 @@ Based on the document content and knowledge graph information, provide an answer
         Returns:
             Dictionary with load statistics
         """
-        from pathlib import Path
-
-        start_time = time.time()
-
-        if not Path(file_path).exists():
-            raise FileNotFoundError(f"Graph file not found: {file_path}")
-
-        # Load from file
-        with open(file_path, 'r', encoding='utf-8') as f:
-            graph_data = json.load(f)
-
-        # Clear existing graph
-        self.clear_graph()
-
-        # Restore entities
-        for entity_id, entity_data in graph_data.get("entities", {}).items():
-            entity = Entity(
-                id=entity_data["id"],
-                name=entity_data["name"],
-                entity_type=entity_data["entity_type"],
-                description=entity_data.get("description", ""),
-                source_docs=entity_data.get("source_docs", []),
-                attributes=entity_data.get("attributes", {})
-            )
-            self.entities[entity_id] = entity
-            self.graph.add_node(
-                entity_id,
-                name=entity.name,
-                type=entity.entity_type,
-                description=entity.description
-            )
-
-        # Restore relationships
-        for rel_data in graph_data.get("relationships", []):
-            relationship = Relationship(
-                source_id=rel_data["source_id"],
-                target_id=rel_data["target_id"],
-                relation_type=rel_data["relation_type"],
-                description=rel_data.get("description", ""),
-                weight=rel_data.get("weight", 1.0),
-                source_doc=rel_data.get("source_doc", "")
-            )
-            self.relationships.append(relationship)
-
-        # Restore graph edges
-        for edge_data in graph_data.get("graph_edges", []):
-            self.graph.add_edge(
-                edge_data["source"],
-                edge_data["target"],
-                **edge_data.get("data", {})
-            )
-
-        # Restore communities
-        for comm_id, comm_data in graph_data.get("communities", {}).items():
-            community = Community(
-                id=comm_data["id"],
-                entities=comm_data["entities"],
-                summary=comm_data.get("summary", ""),
-                central_entity=comm_data.get("central_entity"),
-                level=comm_data.get("level", 0)
-            )
-            self.communities[comm_id] = community
-
-        # Restore documents
-        for doc_id, doc_data in graph_data.get("documents", {}).items():
-            doc = Document(
-                page_content=doc_data["content"],
-                metadata=doc_data.get("metadata", {})
-            )
-            self.documents[doc_id] = doc
-
-        load_time = time.time() - start_time
-
-        stats = {
-            "file_path": file_path,
-            "entities_loaded": len(self.entities),
-            "relationships_loaded": len(self.relationships),
-            "communities_loaded": len(self.communities),
-            "documents_loaded": len(self.documents),
-            "load_time": load_time
-        }
-
-        if self.verbose:
-            logger.info(f"Graph loaded from {file_path}: {stats['entities_loaded']} entities, {stats['relationships_loaded']} relationships in {load_time:.2f}s")
-
-        return stats
+        return graph_persistence.load_graph(
+            file_path=file_path,
+            graph=self.graph,
+            entities=self.entities,
+            relationships=self.relationships,
+            communities=self.communities,
+            documents=self.documents,
+            clear_graph_fn=self.clear_graph,
+            verbose=self.verbose,
+        )
 
 
 def test_graph_rag():
